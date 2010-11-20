@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block scripts %}
+	<script src="http://platform.twitter.com/anywhere.js?id=cKlpH5jndEfrnhBQrrp8w&v=1" type="text/javascript"></script>
+	<script src="http://maps.google.com/maps?file=api&amp;v=2&amp;key=ABQIAAAAXG5dungCtctVf8ll0MRanhR9iirwL7nBc9d2R7_tFiOfa5aC4RSTKOF-7Bi7s8MaO5KAlewwElCpIA"></script>
+{% endblock %}
+
+{% block body %}
+	<div id="header_wrap">
+		<div id="header">
+			<img src="/static/images/logo.png" alt="Foller.me" />
+			<form method="post" action="/"><input name="profile" type="text" value="type in a Twitter name" class="twitter_input" /><input type="submit" style="display:none" /></form>
+			<ul>
+				<li><a class="head" href="http://api.foller.me/">api</a></li>
+				<li><a class="head" href="http://blog.foller.me/">blog</a></li>
+				<li><a class="head" href="http://blog.foller.me/about/">about</a></li>
+			</ul>
+		</div>
+	</div>
+	<div id="content_wrap">
+		<div id="content_help">
+			<div id="content"><div id="content_help_2"></div>
+				<div id="content_help_3">
+					<div id="foller_name">
+						<span class="query">Recent queries:</span>
+						<div id="recent_queries">
+							{% comment %}
+							<?php $foller->getRecentQueries(); ?>
+							<script>
+							/* <![CDATA[ */
+								follerMeAction('recent_update');						
+							/* ]]> */
+							</script>
+							{% endcomment %}
+						</div>
+						{% comment %}
+						<div id="adsense">
+							<script type="text/javascript"><!--
+								google_ad_client = "pub-9413366480011498";
+								/* Foller.me Leaderboard */
+								google_ad_slot = "6522797047";
+								google_ad_width = 728;
+								google_ad_height = 90;
+								//-->
+							</script>
+							<script type="text/javascript" src="http://pagead2.googlesyndication.com/pagead/show_ads.js"></script>
+						</div>
+						{% endcomment %}
+						<h1 class="foller_name">@{{ profile_name }}</h1>
+						<em class="foller_num">
+							{{ followers }} followers / 
+							{{ following }} following / 
+							{{ updates }} status updates / 
+							Tweeting since {{ created }} 
+							{% if homepage %} / URL: {{ homepage }}{% endif %}
+						</em>
+						
+						<p>{{ description }}</p>
+					</div>
+					<div class="rec_tweet">
+						<em class="the_tags notice">
+							We're now running on Google App Engine! Faster, smoother, cheaper!
+						</em>
+					</div>
+					
+					<div class="rec_tweet">
+						<div class="words">
+							<h1>Recent topics</h1>
+						</div>
+						<div class="the_tags">
+							{{ topics_cloud_html }}
+						</div>
+					</div>
+					
+					<div class="rec_tweet">
+						<div class="words">
+							<h1>Recent #hashtags</h1>
+						</div>
+						<div class="the_tags ">
+							{{ hashtags_cloud_html }}
+						</div>
+					</div>
+					
+					<div class="rec_tweet">
+						<div class="words">
+							<h1>Recent @mentions</h1>
+						</div>
+						<div class="the_tags ">
+							{{ mentions_cloud_html }}
+						</div>
+					</div>
+					
+					<div class="rec_tweet">
+						<div class="words">
+							<h1>Followers geography</h1>
+						</div>
+						
+						<div class="the_tags gmaps">
+							<span class="msg"><img src="/static/images/ajax-loader.gif" class="loader" /> Gathering maps data... This may take a while ;) </span>
+							<script type='text/javascript'>
+							/* <![CDATA[ */
+								getMap("{{ profile_name }}");
+							/* ]]> */
+							</script>
+						</div>
+					</div>
+					<?php
+						}
+					?>
+
+					<div id="follow_user">
+						<p>Use the button below to follow @{{ profile_name }}. This method uses OAuth and will not require your Twitter credentials.<br /><br /><span id="follow-button"><noscript><a href="http://twitter.com/{{ profile_name }}">Follow @{{ profile_name }} on Twitter</a></noscript></span></p>
+						<script>
+							jQuery(document).ready(function() {
+								twttr.anywhere(function (T) {
+									T('#follow-button').followButton('{{ profile_name }}');
+								});
+							});
+						</script>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<div id="footer_wrap">
+		<div id="footer">
+			<ul><li><a href="http://blog.foller.me/about/">About Foller.me</a></li>
+				<li><a href="http://blog.foller.me/">Developers blog</a></li>
+				<li><a href="http://blog.foller.me/terms-of-use/">Terms of use</a></li>
+			</ul>
+		</div>
+	</div>
+		
+	<script type="text/javascript" charset="utf-8">
+		var is_ssl = ("https:" == document.location.protocol);
+		var asset_host = is_ssl ? "https://s3.amazonaws.com/getsatisfaction.com/" : "http://s3.amazonaws.com/getsatisfaction.com/";
+		document.write(unescape("%3Cscript src='" + asset_host + "javascripts/feedback-v2.js' type='text/javascript'%3E%3C/script%3E"));
+	</script>
+
+	<script type="text/javascript" charset="utf-8">
+		var feedback_widget_options = {};
+		feedback_widget_options.display = "overlay";  
+		feedback_widget_options.company = "follerme";
+		feedback_widget_options.placement = "right";
+		feedback_widget_options.color = "#1A74B6";
+		feedback_widget_options.style = "idea";
+		var feedback_widget = new GSFN.feedback_widget(feedback_widget_options);
+	</script>
+{% endblock %}

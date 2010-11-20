@@ -1,0 +1,14 @@
+application: follerme
+version: 1
+runtime: python
+api_version: 1
+
+handlers:
+- url: /static
+  static_dir: templates/static
+
+- url: /.*
+  script: main.py
+
+builtins:
+- datastore_admin: on

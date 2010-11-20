@@ -1,0 +1,18 @@
+<div id="map_container">
+	<div id="map" class="the_map" style="display: block; overflow:hidden; width: 925px; height: 300px;"></div>
+	<div id="map_description">
+		The map is still under heavy debug, don't expect to get accurate results in time.
+	</div>
+
+	<script type='text/javascript'>
+		/* <![CDATA[ */
+		map = new GMap2(document.getElementById("map")); 
+		map.setCenter(new GLatLng(40, 5), 2); 
+		map.addControl(new GLargeMapControl());
+		
+		{% for location in locations %}
+			showPoint({{ location.lat }}, {{ location.lon }}, "{{ location.name }}<br />{% for user in location.users %}{{ user }}, {% endfor %}", false);
+		{% endfor %}
+	</script>
+
+</div>

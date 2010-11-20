@@ -1,0 +1,29 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+		<title>Foller.me - Instant Twitter Analytics</title>
+		<meta http-equiv="X-UA-Compatible" content="IE=EmulateIE7" />
+		<link rel="stylesheet" type="text/css" href="/static/css/style.css" />
+		<link rel="shortcut icon" href="/static/images/favicon.ico" />
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.4.4/jquery.min.js"></script>
+		<script src="/static/js/script.js"></script>
+		{% block scripts %}
+		{% endblock %}
+	</head>
+	<body>
+		{% block body %}
+		{% endblock body %}
+	
+		<script type="text/javascript">
+			var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+			document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+		</script>
+		<script type="text/javascript">
+			try {
+			var pageTracker = _gat._getTracker("UA-9055079-1");
+			pageTracker._trackPageview();
+			} catch(err) {}
+		</script>
+	</body>
+</html>
