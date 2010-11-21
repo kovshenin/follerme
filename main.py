@@ -121,6 +121,17 @@ class Profile(webapp.RequestHandler):
 		profile['created_at'] = datetime.strptime(profile['created_at'], "%a %b %d %H:%M:%S +0000 %Y")
 		context['profile'] = profile
 		
+		# Let's submit this as a recent query into the datastore
+		recent = Recent(screen_name=profile['screen_name'], profile_image_url=profile['profile_image_url'])
+		recent.put()
+		
+		# Let's get a list of 40 recent queries
+		query = Recent.all()
+		query.order('-published')
+		recents = query.fetch(40)
+		
+		context['recents'] = recents
+		
 		# The data string will hold all our text concatenated. Perhaps this is not the fastest way
 		# as strings are unchangable. Might convert this to a list in the future and then join if needed.
 		data = ""
@@ -158,9 +169,9 @@ class Profile(webapp.RequestHandler):
 		# Provide the context with th ready cloud HTMLs for topics, hashtags and mentions.
 		# Then finally render the template.
 		context['topics_cloud_html'] = get_cloud_html(topics)
-		context['mentions_cloud_html'] = get_cloud_html(mentions)
+		context['mentions_cloud_html'] = get_cloud_html(mentions, url="/%s")
 		context['hashtags_cloud_html'] = get_cloud_html(hashtags)
-		
+				
 		render(self, "profile.html", context)
 
 # This section (/admin/) is used for administration and moderation
@@ -287,6 +298,12 @@ class Option(db.Model):
 class Geo(db.Model):
 	location = db.StringProperty(required=True)
 	geo = db.StringProperty(required=True, multiline=True)
+	
+# Used to store recent queries in the datastore
+class Recent(db.Model):
+	screen_name = db.StringProperty(required=True)
+	profile_image_url = db.StringProperty(required=True)
+	published = db.DateTimeProperty(required=True, auto_now=True, auto_now_add=True)
 
 # Returns a valid (authenticated) twitter object
 def getTwitterObject():
@@ -342,7 +359,8 @@ def get_cloud_html(words, url="http://search.twitter.com/search?q=%s"):
 	for word, c in words.items():
 		if c > (min_output - 2):
 			size = min_font_size + (c - minimum) * step
-			result.append('<a style="font-size: %(size)spx" class="tag_cloud" href="%(url)s" title="\'%(word)s\' has been used %(count)s times">%(word)s</a>' % {'size': size, 'word': word, 'url': url % word, 'count': c})
+			word_url = word.replace('@', '').replace('#', '')
+			result.append('<a style="font-size: %(size)spx" class="tag_cloud" href="%(url)s" title="\'%(word)s\' has been used %(count)s times">%(word)s</a>' % {'size': size, 'word': word, 'url': url % word_url, 'count': c})
 			
 	return ' '.join(result)
 

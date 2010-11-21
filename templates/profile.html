@@ -5,6 +5,7 @@
 {% block scripts %}
 	<script src="http://platform.twitter.com/anywhere.js?id={{ api_key }}&v=1" type="text/javascript"></script>
 	<script src="http://maps.google.com/maps?file=api&amp;v=2&amp;key={{ google_maps_key }}"></script>
+	<script src="/static/js/jquery.jcarousel.min.js"></script>
 {% endblock %}
 
 {% block body %}
@@ -25,7 +26,44 @@
 				<div id="content_help_3">
 					<div id="foller_name">
 						<span class="query">Recent queries:</span>
+
+							<style>
+								#recent_queries {
+									width: 946px;
+									display: block;
+									float: left;
+									height: 50px;
+									overflow: hidden;
+								}
+								
+								#recent_queries ul {
+									list-style: none;
+									margin: 0;
+								}
+								
+								#recent_queries li {
+									margin-left: 0;
+									margin-right: 4px;
+									float: left;
+								}
+							</style>
+
 						<div id="recent_queries">
+							<ul id="carousel">
+								{% for recent in recents %}
+									<li><a href="/{{ recent.screen_name }}"><img src="{{ recent.profile_image_url }}" /></a></li>
+								{% endfor %}
+							</ul>
+							<script>
+								jQuery(document).ready(function() {
+									jQuery("#carousel").jcarousel({
+										auto: 3,
+										wrap: 'circular',
+										initCallback: function() { },
+										animation: 'slow'
+									});
+								})
+							</script>
 							{% comment %}
 							<?php $foller->getRecentQueries(); ?>
 							<script>
@@ -35,19 +73,6 @@
 							</script>
 							{% endcomment %}
 						</div>
-						{% comment %}
-						<div id="adsense">
-							<script type="text/javascript"><!--
-								google_ad_client = "pub-9413366480011498";
-								/* Foller.me Leaderboard */
-								google_ad_slot = "6522797047";
-								google_ad_width = 728;
-								google_ad_height = 90;
-								//-->
-							</script>
-							<script type="text/javascript" src="http://pagead2.googlesyndication.com/pagead/show_ads.js"></script>
-						</div>
-						{% endcomment %}
 						<h1 class="foller_name">@{{ profile.screen_name }}</h1>
 						<em class="foller_num">
 							{{ profile.followers_count }} followers / 
