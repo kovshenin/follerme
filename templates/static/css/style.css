@@ -3,6 +3,7 @@ body {
 	margin: 0;
 	font-size: 12px;
 	overflow-x: hidden;
+	color: #1A74B6;
 }
 a, a:visited, a:link {
 	color: #1A74B6;
@@ -235,7 +236,6 @@ h2 {
 }
 
 .the_tags {
-	color: #BDA003;
 	font-style: normal;
 	background: #FFF;
 	display:block;
@@ -245,6 +245,10 @@ h2 {
 	-moz-border-radius-bottomright:3px;
 	-moz-border-radius-topleft:3px;
 	-moz-border-radius-topright:3px;
+}
+
+.the_tags a {
+	color: #BDA003;
 }
 
 .the_tags.notice {

@@ -95,7 +95,7 @@
 							<h1>Recent topics</h1>
 						</div>
 						<div class="the_tags">
-							{{ topics_cloud_html }}
+							{% if topics_cloud_html %}{{ topics_cloud_html }}{% else %}No topics have been mentioned by @{{ profile.screen_name }} lately.{% endif %}
 						</div>
 					</div>
 					
@@ -104,7 +104,7 @@
 							<h1>Recent #hashtags</h1>
 						</div>
 						<div class="the_tags ">
-							{{ hashtags_cloud_html }}
+							{% if hashtags_cloud_html %}{{ hashtags_cloud_html }}{% else %}No hashtags have been mentioned by @{{ profile.screen_name }} lately.{% endif %}
 						</div>
 					</div>
 					
@@ -113,7 +113,7 @@
 							<h1>Recent @mentions</h1>
 						</div>
 						<div class="the_tags ">
-							{{ mentions_cloud_html }}
+							{% if mentions_cloud_html %}{{ mentions_cloud_html }}{% else %}@{{ profile.screen_name }} hasn't mentioned anyone lately.{% endif %}
 						</div>
 					</div>
 					

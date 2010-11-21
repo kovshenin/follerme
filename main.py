@@ -1,5 +1,5 @@
 import re
-import urllib
+import urllib, urllib2
 import logging
 import time
 from datetime import datetime
@@ -112,7 +112,25 @@ class Profile(webapp.RequestHandler):
 		# Fire a /statuses/user_timeline request, record parse the first entry for the user
 		# details.
 		twitter = getTwitterObject()
-		timeline = twitter.GetUserTimeline({'screen_name': profile_name, 'count': 100})
+		
+		try:
+			timeline = twitter.GetUserTimeline({'screen_name': profile_name, 'count': 100})
+		except urllib2.HTTPError as e:
+			# An HTTP error can occur during requests to the Twitter API.
+			# We handle such errors here and log them for later investigation.
+			error = {'title': 'Unknown Error', 'message': "We're sorry, but an unknown error has occoured.<br />We'll very be glad if you <a href='http://twitter.com/kovshenin'>report this</a>."}
+			if e.code == 401:
+				error['title'] = 'Profile Protected'
+				error['message'] = "It seems that <strong>@%s</strong>'s tweets are protected.<br />Sorry, but there's nothing we can do at this point ;)" % profile_name
+			elif e.code == 404:
+				error['title'] = 'Not Found'
+				error['message'] = 'It seems that @<strong>%s</strong> is not tweeting at all.<br />Perhaps you should try somebody else:' % profile_name
+			
+			# Log the error, render the template and return
+			logging.error("Code %s: %s - " % (e.code, e.msg) + "Request was: %s" % profile_name)
+			render(self, 'error.html', {'error': error})
+			return
+			
 		profile = timeline[0]['user']
 		
 		# We make some manipulations for the profile, since we don't want to output some fields
@@ -176,9 +194,20 @@ class Profile(webapp.RequestHandler):
 		
 		# Provide the context with th ready cloud HTMLs for topics, hashtags and mentions.
 		# Then finally render the template.
-		context['topics_cloud_html'] = get_cloud_html(topics)
-		context['mentions_cloud_html'] = get_cloud_html(mentions, url="/%s")
-		context['hashtags_cloud_html'] = get_cloud_html(hashtags)
+		try:
+			context['topics_cloud_html'] = get_cloud_html(topics)
+		except:
+			pass
+		
+		try:
+			context['mentions_cloud_html'] = get_cloud_html(mentions, url="/%s")
+		except:
+			pass
+		
+		try:
+			context['hashtags_cloud_html'] = get_cloud_html(hashtags)
+		except:
+			pass
 				
 		render(self, "profile.html", context)
 
