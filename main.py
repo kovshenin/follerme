@@ -15,14 +15,24 @@ from google.appengine.api.labs import taskqueue
 from oauth import oauth
 from oauthtwitter import OAuthApi
 
+# API tokens and keys.
 consumer_key = 'cKlpH5jndEfrnhBQrrp8w'
 consumer_secret = 'reeYtKhTY7LRTwzXE5tmFrxwkD4lLVY9FgxrY5KFsE'
+api_key = 'cKlpH5jndEfrnhBQrrp8w'
+google_maps_key = 'ABQIAAAAXG5dungCtctVf8ll0MRanhR9iirwL7nBc9d2R7_tFiOfa5aC4RSTKOF-7Bi7s8MaO5KAlewwElCpIA'
 
+# The home screen, nothing extra-ordinary, we just render
+# the template with an empty context.
 class Home(webapp.RequestHandler):
 	def get(self):
 		context = {}
 		render(self, 'home.html', context)
 	
+	# This is not magic. The request form's action on the home page
+	# is set to the homepage itself via the POST method, this is the
+	# place where we handle that request and redirect accordingly
+	# to foller.me/username stripping extra characters. We get rid of
+	# the "send post data" message by browsers when we refresh the profile.
 	def post(self):
 		profile_name = self.request.get('profile', None)
 		if profile_name:
@@ -31,66 +41,107 @@ class Home(webapp.RequestHandler):
 			self.redirect(profile_name + '/')
 		else:
 			self.redirect('/')
-			
+
+# The AJAX data handler, used to handle asynchronous requests such as
+# the Google Maps (followers geography) part in the profile page. This
+# can be extended in the future.
 class Ajax(webapp.RequestHandler):
 	def post(self, action):
+		
+		# If the request action is called gmap, calculate the followers' locations
+		# and return them pointed out on a Google Map (via a template and javascript)
 		if action == 'gmap':
 			profile_name = self.request.get('profile', None)
 			if profile_name:
 				locations = {}
 				twitter = getTwitterObject()
 				followers = twitter.GetFollowers({'screen_name': profile_name})
+				
+				# Loop through each follower and add a location if it does not exist.
+				# Otherwise add the user to the list on an existing location. This way
+				# we're grouping followers from the same locations.
 				for follower in followers:
 					user = follower
 					if follower['location'] in locations:
 						locations[follower['location']]['users'].append(user)
 					else:
 						locations[follower['location']] = {'name': follower['location'], 'lat': 0, 'lon': 0, 'users': [user]}
-						
+				
+				# Loop through all the locations and query the Datastore for their
+				# Geo points (latitude and longitude) which could be pointed out
+				# on the map.
 				for location in locations.keys():
 					query = Geo.all()
 					query.filter('location =', location)
 					g = query.get()
+					
+					# We don't want empty locations, neither do we want locations
+					# recorded as None, which are temporary stored until the cron
+					# jobs resolves them into valid geo points.
 					if g:
 						if g.geo != 'None':
 							if g.geo != '0,0':
-								geo = g.geo
-								locations[location]['lat'], locations[location]['lon'] = geo.split(',')
+								# If a location exists, we set its lat and lon values that are then manipulated
+								# via javascript and pointed out on the map.
+								locations[location]['lat'], locations[location]['lon'] = g.geo.split(',')
 							else:
+								# If the location's geo address is 0,0 we remove it from the locations list
+								# since we don't want to show irrelevant locations.
 								del locations[location]
+					
+					# If the query returned no results, we verify if the location is valid
+					# and add it to the Datastore with a value of None, for later processing
+					# by the cron jobs. We delete the location from the locations dict anyways
+					# since we don't have any lat,lon points to show off.
 					else:
 						if location:
 							geo = Geo(location=location, geo="None")
 							geo.put()
 						del locations[location]
 
-				logging.error(locations)
 				render(self, 'map.html', {'locations': list(locations.values())})
 			
-
+# Perhaps the most complex view. This is the profile view with the topics, hashtags
+# and mentions clouds, user data and the followers geography.
 class Profile(webapp.RequestHandler):
 	def get(self, profile_name):
-		context = {}
 		
+		# Prepare the context with our API keys used in the template.
+		context = {'google_maps_key': google_maps_key, 'api_key': api_key}
+		
+		# Fire a /statuses/user_timeline request, record parse the first entry for the user
+		# details.
 		twitter = getTwitterObject()
 		timeline = twitter.GetUserTimeline({'screen_name': profile_name, 'count': 100})
 		profile = timeline[0]['user']
+		
+		# We make some manipulations for the profile, since we don't want to output some fields
+		# (such as the created at field) the way Twitter passes them over to us. We convert that
+		# into a valid datetime object.
 		profile['created_at'] = datetime.strptime(profile['created_at'], "%a %b %d %H:%M:%S +0000 %Y")
 		context['profile'] = profile
-
+		
+		# The data string will hold all our text concatenated. Perhaps this is not the fastest way
+		# as strings are unchangable. Might convert this to a list in the future and then join if needed.
 		data = ""
 		for entry in timeline:
 			data += " %s" % entry['text']
 		
+		# Let's remove everything that doesn't match characters we allow.
 		p = re.compile(r'[^a-zA-Z0-9@#_]') # Add foreign languages here
 		data = p.sub(' ', data)
+		
+		# Remove all the stopwords and lowercase the data.
 		data = remove_stopwords(data)
 		data = data.lower()
 		
+		# The three dicts will hold our words and the number of times they've
+		# been used for later tag cloud generation.
 		topics = {}
 		mentions = {}
 		hashtags = {}
 		
+		# Loop through all the words, separate them into topics, hashtags and mentions.
 		for word in data.split():
 			if word.startswith('@'):
 				d = mentions
@@ -104,11 +155,12 @@ class Profile(webapp.RequestHandler):
 			else:
 				d[word] = 1
 		
+		# Provide the context with th ready cloud HTMLs for topics, hashtags and mentions.
+		# Then finally render the template.
 		context['topics_cloud_html'] = get_cloud_html(topics)
 		context['mentions_cloud_html'] = get_cloud_html(mentions)
 		context['hashtags_cloud_html'] = get_cloud_html(hashtags)
 		
-		#context = {'profile_name': profile_name}
 		render(self, "profile.html", context)
 
 # This section (/admin/) is used for administration and moderation
@@ -260,7 +312,9 @@ def remove_stopwords(text):
 			
 	return ' '.join(clean)
 
-# Render a cloud based on a words dictionary
+# Render a cloud based on a words dictionary. There seems to be some
+# magic going on here, have to revise and probably rewrite for easier
+# to understand and more elegant output.
 def get_cloud_html(words, url="http://search.twitter.com/search?q=%s"):
 	min_font_size = 12
 	max_font_size = 30
