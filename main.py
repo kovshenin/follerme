@@ -126,9 +126,17 @@ class Profile(webapp.RequestHandler):
 		recent.put()
 		
 		# Let's get a list of 40 recent queries
+		recents = []
+		recent_screen_names = []
 		query = Recent.all()
 		query.order('-published')
-		recents = query.fetch(40)
+		for recent in query:
+			if recent.screen_name not in recent_screen_names:
+				recents.append(recent)
+				recent_screen_names.append(recent.screen_name)
+				if len(recents) >= 40:
+					break
+		#recents = query.fetch(40)
 		
 		context['recents'] = recents
 		
@@ -347,20 +355,23 @@ def get_cloud_html(words, url="http://search.twitter.com/search?q=%s"):
 		min_output = 2
 	else:
 		min_output = 1
+	
+	logging.error("max/min: %s/%s" % (maximum, minimum))
 		
 	spread = maximum - minimum
 	if spread == 0: 
 		spread = 1
 		
-	step = (max_font_size - min_font_size) / spread
+	step = (max_font_size - min_font_size) / float(spread)
 	
 	result = []
 	
 	for word, c in words.items():
 		if c > (min_output - 2):
-			size = min_font_size + (c - minimum) * step
+			size = min_font_size + ((c - minimum) * step)
 			word_url = word.replace('@', '').replace('#', '')
-			result.append('<a style="font-size: %(size)spx" class="tag_cloud" href="%(url)s" title="\'%(word)s\' has been used %(count)s times">%(word)s</a>' % {'size': size, 'word': word, 'url': url % word_url, 'count': c})
+			rel = "external nofollow" if url.startswith('http://') else ''
+			result.append('<a rel="%(rel)s" style="font-size: %(size)spx" class="tag_cloud" href="%(url)s" title="\'%(word)s\' has been used %(count)s times">%(word)s</a>' % {'size': int(size), 'word': word, 'url': url % word_url, 'count': c, 'rel': rel})
 			
 	return ' '.join(result)
 
