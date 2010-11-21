@@ -2,6 +2,7 @@ import re
 import urllib
 import logging
 import time
+from datetime import datetime
 
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp.util import run_wsgi_app
@@ -38,50 +39,45 @@ class Ajax(webapp.RequestHandler):
 			if profile_name:
 				locations = {}
 				twitter = getTwitterObject()
-				followers = twitter.GetFollowers()
+				followers = twitter.GetFollowers({'screen_name': profile_name})
 				for follower in followers:
+					user = follower
 					if follower['location'] in locations:
-						locations[follower['location']]['users'].append(follower['screen_name'])
+						locations[follower['location']]['users'].append(user)
 					else:
-						locations[follower['location']] = {'name': follower['location'], 'lat': 0, 'lon': 0, 'users': [follower['screen_name']]}
+						locations[follower['location']] = {'name': follower['location'], 'lat': 0, 'lon': 0, 'users': [user]}
 						
 				for location in locations.keys():
 					query = Geo.all()
 					query.filter('location =', location)
-					#query.filter('geo !=', 'None')
 					g = query.get()
 					if g:
 						if g.geo != 'None':
-							geo = g.geo
-							locations[location]['lat'], locations[location]['lon'] = geo.split(',')
+							if g.geo != '0,0':
+								geo = g.geo
+								locations[location]['lat'], locations[location]['lon'] = geo.split(',')
+							else:
+								del locations[location]
 					else:
 						if location:
 							geo = Geo(location=location, geo="None")
 							geo.put()
 						del locations[location]
-						
-					#points.append({'screen_name': follower['screen_name'], 'location': follower['location']})
+
 				logging.error(locations)
 				render(self, 'map.html', {'locations': list(locations.values())})
 			
 
 class Profile(webapp.RequestHandler):
 	def get(self, profile_name):
-		context = {'profile_name': profile_name}
+		context = {}
+		
 		twitter = getTwitterObject()
-		
 		timeline = twitter.GetUserTimeline({'screen_name': profile_name, 'count': 100})
-		user = timeline[0]['user']
-		context['description'] = user['description']
-		context['following'] = user['friends_count']
-		context['followers'] = user['followers_count']
-		context['updates'] = user['statuses_count']
-		
-		context['image_url'] = user['profile_image_url']
-		context['url'] = user['url']
-		context['created'] = user['created_at']
-		context['location'] = user['location']
-		
+		profile = timeline[0]['user']
+		profile['created_at'] = datetime.strptime(profile['created_at'], "%a %b %d %H:%M:%S +0000 %Y")
+		context['profile'] = profile
+
 		data = ""
 		for entry in timeline:
 			data += " %s" % entry['text']
@@ -115,15 +111,26 @@ class Profile(webapp.RequestHandler):
 		#context = {'profile_name': profile_name}
 		render(self, "profile.html", context)
 
+# This section (/admin/) is used for administration and moderation
+# operations. Use with care, protect with password. OAuth registration
+# and verification are handled here.
 class Admin(webapp.RequestHandler):
 		def get(self, action):
+			# Depending on the action requested /admin/<action>/
 			if action == 'register':
+				
+				# Register a Twitter user with the application using
+				# OAuth. Works with the Option model to store the request and
+				# access tokens.
+				
+				# Remove all the previous tokens matching oauth-* from the datastore.
 				options = Option.all()
 				options.filter('name >=', 'oauth-').filter('name <', 'oauth-' + u'\ufffd')
 				options.fetch(1000)
 				for option in options:
 					option.delete()
 				
+				# Request an OAuth token and show the authorization URL on Twitter.
 				twitter = OAuthApi(consumer_key, consumer_secret)
 				credentials = twitter.getRequestToken()
 				self.response.out.write(twitter.getAuthorizationURL(credentials))
@@ -132,12 +139,15 @@ class Admin(webapp.RequestHandler):
 				oauth_token = credentials['oauth_token']
 				oauth_token_secret = credentials['oauth_token_secret']
 				
+				# Record the tokens
 				opt = Option(name='oauth-request-token', value=oauth_token)
 				opt.put()
 				opt = Option(name='oauth-request-token-secret', value=oauth_token_secret)
 				opt.put()
 				
 			elif action == 'verify':
+				# Used to verify an initiated registration request. Request tokens should
+				# by now be stored in the data store. Retrieve them and initiate a change.
 				twitter = OAuthApi(consumer_key, consumer_secret)
 				oauth_verifier = self.request.get('oauth_verifier')
 				
@@ -149,9 +159,12 @@ class Admin(webapp.RequestHandler):
 				options.filter('name =', 'oauth-request-token-secret')
 				oauth_token_secret = options.get()
 				
+				# Form a request and ask Twitter to exchange request tokens for access tokens using
+				# an OAuth verifier (PIN code).
 				credentials = {'oauth_token': oauth_token.value, 'oauth_token_secret': oauth_token_secret.value, 'oauth_callback_confirmed': 'true'}
 				credentials = twitter.getAccessToken(credentials, oauth_verifier)
 				
+				# Record the access tokens and remove the previously stored request tokens.
 				access_token = Option(name='oauth-access-token', value=credentials['oauth_token'])
 				access_token_secret = Option(name='oauth-access-token-secret', value=credentials['oauth_token_secret'])
 				
@@ -160,43 +173,70 @@ class Admin(webapp.RequestHandler):
 				access_token.put()
 				access_token_secret.put()
 				
+				# Tokens are now saved, getTwitterObject can be used.
 				self.response.out.write("You are now registered as @%s!" % credentials['screen_name'])
 			
+			# Uses the Task Queues API, although Cron jobs are more likely to fire
 			elif action == 'work':
 				taskqueue.add(url='/admin/worker/', params={'task': 'geo'}, method='GET')
 				self.response.out.write("Geo task added to queue")
 			
+			# Jobs that have to be carried out, either via Task Queues or via Cron
 			elif action == 'worker':
-				query = Geo.all()
-				query.filter('geo =', 'None')
-				results = query.fetch(5)
-				for result in results:
-					form_fields = {'q': result.location.encode('utf-8'), 'output': 'csv', 'key': 'ABQIAAAAXG5dungCtctVf8ll0MRanhR9iirwL7nBc9d2R7_tFiOfa5aC4RSTKOF-7Bi7s8MaO5KAlewwElCpIA'}
-					form_data = urllib.urlencode(form_fields)
-					
-					google_maps = urlfetch.fetch(url='http://maps.google.com/maps/geo?' + form_data)
-					if google_maps.status_code == 200:
-						status, n, lat, lon = google_maps.content.split(',')
-						result.geo = "%s,%s" % (lat, lon)
-						result.put()
+				if self.request.get('task') == 'geo':
+					query = Geo.all()
+					query.filter('geo =', 'None')
+					results = query.fetch(10)
+					for result in results:
+						try:
+							# If the location format is already a Geo string
+							lat, lon = result.location.split(",")
+							lat = float(lat)
+							lon = float(lon)
+							result.geo = "%s,%s" % (lat, lon)
+							result.put()
+							break
+						except:
+							pass
 						
-					time.sleep(1)
-					
-			
+						# Prepare and fire a request to the Google Maps API
+						form_fields = {'q': result.location.encode('utf-8'), 'output': 'csv', 'key': 'ABQIAAAAXG5dungCtctVf8ll0MRanhR9iirwL7nBc9d2R7_tFiOfa5aC4RSTKOF-7Bi7s8MaO5KAlewwElCpIA'}
+						form_data = urllib.urlencode(form_fields)
+						
+						google_maps = urlfetch.fetch(url='http://maps.google.com/maps/geo?' + form_data)
+						if google_maps.status_code == 200 and len(google_maps.content):
+							try:
+								# Parse and record the result if it's valid
+								status, n, lat, lon = google_maps.content.split(',')
+								result.geo = "%s,%s" % (lat, lon)
+								result.put()
+							except:
+								pass
+						
+						# Google Maps doesn't like too many requests
+						time.sleep(1)
+						
+				self.response.out.write("Geo locations job complete")
+
+# Used to render templates with a global context
 def render(obj, tpl='default.html', context={}):
 	obj.response.out.write(template.render('templates/' + tpl, context))
-	
+
+# Used to render plain text (mostly for debugging purposes)
 def rendertext(obj, text):
 	obj.response.out.write(text)
 
+# The Option model, used to store OAuth tokens and other settings
 class Option(db.Model):
 	name = db.StringProperty(required=True)
 	value = db.StringProperty()
 	
+# Used to store the geo locations to geo-points relations
 class Geo(db.Model):
 	location = db.StringProperty(required=True)
 	geo = db.StringProperty(required=True, multiline=True)
 
+# Returns a valid (authenticated) twitter object
 def getTwitterObject():
 	options = Option.all()
 	options.filter('name =', 'oauth-access-token')
@@ -209,6 +249,7 @@ def getTwitterObject():
 	twitter = OAuthApi(consumer_key, consumer_secret, access_token.value, access_token_secret.value)
 	return twitter
 	
+# Remove stopwords (list in stopwords.py)
 def remove_stopwords(text):
 	from stopwords import stopwords
 	words = text.split()
@@ -218,7 +259,8 @@ def remove_stopwords(text):
 			clean.append(word)
 			
 	return ' '.join(clean)
-	
+
+# Render a cloud based on a words dictionary
 def get_cloud_html(words, url="http://search.twitter.com/search?q=%s"):
 	min_font_size = 12
 	max_font_size = 30
@@ -250,6 +292,7 @@ def get_cloud_html(words, url="http://search.twitter.com/search?q=%s"):
 			
 	return ' '.join(result)
 
+# Accessible URLs, others in app.yaml
 urls = [
 	(r'/', Home),
 	(r'/admin/(\w+)/?', Admin),
@@ -258,6 +301,7 @@ urls = [
 ]
 application = webapp.WSGIApplication(urls, debug=True)
 
+# Run the application
 def main():
 	run_wsgi_app(application)
 

@@ -1,7 +1,7 @@
 <div id="map_container">
 	<div id="map" class="the_map" style="display: block; overflow:hidden; width: 925px; height: 300px;"></div>
 	<div id="map_description">
-		The map is still under heavy debug, don't expect to get accurate results in time.
+		If you see too little pins or no pins at all, we're still parsing your query. Come back later to get a bigger picture!
 	</div>
 
 	<script type='text/javascript'>
@@ -11,7 +11,7 @@
 		map.addControl(new GLargeMapControl());
 		
 		{% for location in locations %}
-			showPoint({{ location.lat }}, {{ location.lon }}, "{{ location.name }}<br />{% for user in location.users %}{{ user }}, {% endfor %}", false);
+			showPoint({{ location.lat }}, {{ location.lon }}, '<span class="gmaps-bubble"><h2>{{ location.name|escape }}</h2><div class="map-profiles">{% for user in location.users %}<a href="/{{ user.screen_name|escape }}" title="{{ user.screen_name|escape }}" ><img src="{{ user.profile_image_url|escape }}" alt="{{ user.screen_name|escape }}" /></a>{% endfor %}</div></span>', false);
 		{% endfor %}
 	</script>
 

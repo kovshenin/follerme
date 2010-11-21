@@ -8,7 +8,7 @@
 {% block body %}
 	<div id="header_wrap">
 		<div id="header">
-			<img src="/static/images/logo.png" alt="Foller.me" />
+			<a href="/"><img src="/static/images/logo.png" alt="Foller.me" /></a>
 			<form method="post" action="/"><input name="profile" type="text" value="type in a Twitter name" class="twitter_input" /><input type="submit" style="display:none" /></form>
 			<ul>
 				<li><a class="head" href="http://api.foller.me/">api</a></li>
@@ -46,16 +46,16 @@
 							<script type="text/javascript" src="http://pagead2.googlesyndication.com/pagead/show_ads.js"></script>
 						</div>
 						{% endcomment %}
-						<h1 class="foller_name">@{{ profile_name }}</h1>
+						<h1 class="foller_name">@{{ profile.screen_name }}</h1>
 						<em class="foller_num">
-							{{ followers }} followers / 
-							{{ following }} following / 
-							{{ updates }} status updates / 
-							Tweeting since {{ created }} 
-							{% if homepage %} / URL: {{ homepage }}{% endif %}
+							{{ profile.followers_count }} followers / 
+							{{ profile.friends_count }} following / 
+							{{ profile.statuses_count }} status updates / 
+							Tweeting since {{ profile.created_at|date:"F Y" }} 
+							{% if profile.url %} / URL: {{ profile.url|urlizetrunc:25 }}{% endif %}
 						</em>
 						
-						<p>{{ description }}</p>
+						<p>{{ profile.description }}</p>
 					</div>
 					<div class="rec_tweet">
 						<em class="the_tags notice">
@@ -99,25 +99,34 @@
 							<span class="msg"><img src="/static/images/ajax-loader.gif" class="loader" /> Gathering maps data... This may take a while ;) </span>
 							<script type='text/javascript'>
 							/* <![CDATA[ */
-								getMap("{{ profile_name }}");
+								getMap("{{ profile.screen_name }}");
 							/* ]]> */
 							</script>
 						</div>
 					</div>
-					<?php
-						}
-					?>
 
-					<div id="follow_user">
-						<p>Use the button below to follow @{{ profile_name }}. This method uses OAuth and will not require your Twitter credentials.<br /><br /><span id="follow-button"><noscript><a href="http://twitter.com/{{ profile_name }}">Follow @{{ profile_name }} on Twitter</a></noscript></span></p>
-						<script>
-							jQuery(document).ready(function() {
-								twttr.anywhere(function (T) {
-									T('#follow-button').followButton('{{ profile_name }}');
-								});
-							});
-						</script>
+					<div class="rec_tweet" style="margin-top: 30px; float: left; margin-bottom: 10px;">
+						<div class="the_tags" style="float: left">
+							<div class="follow-user">
+								<div style="float: left; margin-left: 0px;">
+									<a href="http://twitter.com/share" class="twitter-share-button" data-count="vertical" data-via="follerme" data-related="kovshenin:The creator of Foller.me">Tweet</a><script type="text/javascript" src="http://platform.twitter.com/widgets.js"></script>
+								</div>
+								<div style="float: left; width: 200px; margin-left: 10px;">
+									<p style="margin-top: 2px; margin-bottom: 8px;">Use the button below to follow @{{ profile.screen_name }}.</p>
+									<span id="follow-button"><noscript><a href="http://twitter.com/{{ profile.screen_name }}">Follow @{{ profile.screen_name }} on Twitter</a></noscript></span>
+									<script>
+										jQuery(document).ready(function() {
+											twttr.anywhere(function (T) {
+												T('#follow-button').followButton('{{ profile.screen_name }}');
+											});
+										});
+									</script>
+								</div>
+							</div>
+						</div>
 					</div>
+
+					<div style="clear: both;"></div>
 				</div>
 			</div>
 		</div>

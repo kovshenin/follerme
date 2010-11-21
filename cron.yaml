@@ -1,0 +1,4 @@
+cron:
+- description: Geo Locations
+  url: /admin/worker/?task=geo
+  schedule: every 5 minutes synchronized
