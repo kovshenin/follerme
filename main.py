@@ -115,7 +115,7 @@ class Profile(webapp.RequestHandler):
 		
 		try:
 			timeline = twitter.GetUserTimeline({'screen_name': profile_name, 'count': 100})
-		except urllib2.HTTPError as e:
+		except urllib2.HTTPError, e:
 			# An HTTP error can occur during requests to the Twitter API.
 			# We handle such errors here and log them for later investigation.
 			error = {'title': 'Unknown Error', 'message': "We're sorry, but an unknown error has occoured.<br />We'll very be glad if you <a href='http://twitter.com/kovshenin'>report this</a>."}
