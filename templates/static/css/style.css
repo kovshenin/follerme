@@ -348,6 +348,42 @@ a.collapse {
 	margin-left: -190px; /*set to a negative number 1/2 of your width*/
 }
 
+.about {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 500px;
+	height: 300px;
+	margin-top: -150px;
+	margin-left: -250px;
+	/*background: #eee;*/
+}
+
+.about img {
+	float: left;
+}
+
+.about h1 {
+	float: left;
+	margin-top: 34px;
+	font-family: 'Trebuchet MS', Tahoma, Arial, sans-serif;
+	font-size: 24px;
+	font-weight: normal;
+}
+
+.about p {
+	clear: both;
+	margin-top: 10px;
+	margin-bottom: 0px;
+	float: left;
+	width: 100%;
+	color: #666;
+}
+
+.about p.input-form {
+	text-align: center;
+}
+
 .ab_bottom {
 	position: absolute;
 	top:100%;
@@ -430,7 +466,7 @@ a.collapse {
 	clear:both;
 }
 
-.error input.twitter_input {
+.error input.twitter_input, .about .twitter_input {
 	border: 1px solid #1A74B6;
 	color: #CCC;
 	width: 175px;

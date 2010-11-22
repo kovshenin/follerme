@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}About Foller.me{% endblock %}
+
+{% block body %}
+	<div class="about">
+		<form method="POST" action="/">
+			<a href="/"><img src="/static/images/logo.png" alt="Foller.me Home" /></a>
+			<h1>About Foller.me</h1>
+			<div class="content">
+				<p>Foller.me is a web application based on the Twitter API, used to gather <strong>Twitter analytics</strong> from any profile – in seconds! Foller.me scans your Twitter profile, parses your latest tweets and followers. Tweets are separated into topics, mentions and hashtags. Followers are mapped out on a Google Map.</p>
+				<p>Foller.me was written back in 2009 by <a href="http://kovshenin.com">Konstantin Kovshenin</a> - a young web developer from Moscow, Russia. If you wanna know - we use Python and Google App Engine.</p>
+				<p>So what are you waiting for? Try it right now! Type in your Twitter name in the box below and hit enter.</p>
+
+				<p class="input-form">
+					<input type="text" value="type in a Twitter name" name="profile" class="twitter_input activate" style="margin-top:20px;" />
+					<input type="submit" style="display:none" />
+				</p>
+			</div>
+		</form>
+	</div>
+	{% include "footer_simple.html" %}
+{% endblock %}

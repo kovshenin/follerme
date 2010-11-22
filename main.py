@@ -232,6 +232,11 @@ class Profile(webapp.RequestHandler):
 				
 		render(self, "profile.html", context)
 
+# Used to render the about page
+class About(webapp.RequestHandler):
+	def get(self):
+		render(self, 'about.html')
+
 # This section (/admin/) is used for administration and moderation
 # operations. Use with care, protect with password. OAuth registration
 # and verification are handled here.
@@ -431,6 +436,7 @@ urls = [
 	(r'/', Home),
 	(r'/admin/(\w+)/?', Admin),
 	(r'/ajax/(\w+)/?', Ajax),
+	(r'/about/?', About),
 	(r'/(\w+)/?', Profile),
 ]
 application = webapp.WSGIApplication(urls, debug=True)
