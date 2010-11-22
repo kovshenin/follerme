@@ -186,7 +186,7 @@ class Profile(webapp.RequestHandler):
 		data = p.sub('', data)
 		
 		# Let's remove everything that doesn't match characters we allow.
-		p = re.compile(r'[^a-zA-Z0-9@#_]') # Add foreign languages here
+		p = re.compile(r'[:punct:\-\.\,\!\?\+\=]') # Add foreign languages here
 		data = p.sub(' ', data)
 		
 		# Remove all the stopwords and lowercase the data.
@@ -383,7 +383,7 @@ def remove_stopwords(text):
 	words = text.split()
 	clean = []
 	for word in words:
-		if not word.isdigit() and not word.lower() in stopwords:
+		if not word.isdigit() and not word.lower().encode("utf-8") in stopwords and not len(word) < 2:
 			clean.append(word)
 			
 	return ' '.join(clean)
