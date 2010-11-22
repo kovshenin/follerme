@@ -2,6 +2,7 @@ import re
 import urllib, urllib2
 import logging
 import time
+import os
 from datetime import datetime
 
 from google.appengine.ext import webapp
@@ -100,7 +101,126 @@ class Ajax(webapp.RequestHandler):
 						del locations[location]
 
 				render(self, 'map.html', {'locations': list(locations.values())})
+
+
+# Used to serve the API methods, mostly like the Profile class
+# but less data is used.
+class API(webapp.RequestHandler):
+	def get(self, profile_name, request_object, response_format):
+		import simplejson.encoder
+		encoder = simplejson.encoder.JSONEncoder()
+
+		context = {}
+		
+		# Create a Twitter OAuth object.
+		try:
+			twitter = getTwitterObject()
+		except AttributeError, e:
+			# Something went wrong, perhaps the OAuth tokens expired or have been removed
+			# from the datastore.
+			error = {'title': "Something's Broken", 'message': "We're so sorry, but it seems that Foller.me is down. We'll deal with this issue as soon as possible"}			
+			logging.error("API: Cannot create a Twitter OAuth object. Lacking tokens?")
 			
+			rendertext(self, encoder.encode({'error': error}))
+			return
+
+		# Fire a /statuses/user_timeline request, record parse the first entry for the user
+		# details.
+		try:
+			timeline = twitter.GetUserTimeline({'screen_name': profile_name, 'count': 100})
+		except urllib2.HTTPError, e:
+			# An HTTP error can occur during requests to the Twitter API.
+			# We handle such errors here and log them for later investigation.
+			error = {'title': 'Unknown Error', 'message': "We're sorry, but an unknown error has occoured. We'll very be glad if you <a href='http://twitter.com/kovshenin'>report this</a>."}
+			if e.code == 401:
+				error['title'] = 'Profile Protected'
+				error['message'] = "It seems that @%s's tweets are protected." % profile_name
+			elif e.code == 404:
+				error['title'] = 'Profile Not Found'
+				error['message'] = 'It seems that @%s is not tweeting at all.' % profile_name
+			
+			# Log the error, render the template and return
+			logging.error("API: Code %s: %s - " % (e.code, e.msg) + "Request was: %s" % profile_name)
+			rendertext(self, encoder.encode({'error': error}))
+			return
+		
+		try:	
+			profile = timeline[0]['user']
+		except IndexError, e:
+			# If timeline[0] is inaccessible then there were no tweets at all
+			error = {'title': 'Profile Empty', 'message': "There were no tweets by @%s at all." % profile_name}
+			logging.error("API: Accessed an empty profile: %s" % profile_name)
+			rendertext(self, encoder.encode({'error': error}))
+			return
+		
+		# We make some manipulations for the profile, since we don't want to output some fields
+		# (such as the created at field) the way Twitter passes them over to us. We convert that
+		# into a valid datetime object.
+		profile['created_at'] = datetime.strptime(profile['created_at'], "%a %b %d %H:%M:%S +0000 %Y")
+		context['profile'] = profile
+		
+		# Let's submit this as a recent query into the datastore
+		recent = Recent(screen_name=profile['screen_name'], profile_image_url=profile['profile_image_url'])
+		recent.put()
+	
+		# The data string will hold all our text concatenated. Perhaps this is not the fastest way
+		# as strings are unchangable. Might convert this to a list in the future and then join if needed.
+		data = ""
+		for entry in timeline:
+			data += " %s" % entry['text']
+		
+		# Remove all the URLs first
+		p = re.compile(r'((https?|ftp|gopher|telnet|file|notes|ms-help):((//)|(\\\\))+[\w\d:#@%/;$()~_?\+-=\\\.&]*)')
+		data = p.sub('', data)
+		
+		# Let's remove everything that doesn't match characters we allow.
+		p = re.compile(r'[\-\.\,\!\?\+\=\[\]\/\'\"]') # Add foreign languages here
+		data = p.sub(' ', data)
+		
+		# Remove all the stopwords and lowercase the data.
+		data = remove_stopwords(data)
+		data = data.lower()
+		
+		# The three dicts will hold our words and the number of times they've
+		# been used for later tag cloud generation.
+		topics = {}
+		mentions = {}
+		hashtags = {}
+		
+		# Loop through all the words, separate them into topics, hashtags and mentions.
+		for word in data.split():
+			if word.startswith('@'):
+				d = mentions
+			elif word.startswith('#'):
+				d = hashtags
+			else:
+				d = topics
+				
+			if word in d:
+				d[word] += 1
+			else:
+				d[word] = 1
+		
+		# What are we requesting?
+		if request_object == 'topics':
+			data = topics
+		elif request_object == 'mentions':
+			data = mentions
+		elif request_object == 'hashtags':
+			data = hashtags
+		elif request_object == 'all':
+			data = topics
+			data.update(mentions)
+			data.update(hashtags)
+			
+		# Respond
+		if response_format == 'json':
+			rendertext(self, encoder.encode(data))
+		elif response_format == 'xhtml':
+			min_font_size = int(self.request.get('font_min', 12))
+			max_font_size = int(self.request.get('font_max', 30))
+			rendertext(self, get_cloud_html(data, min_font_size=min_font_size, max_font_size=max_font_size))
+
 # Perhaps the most complex view. This is the profile view with the topics, hashtags
 # and mentions clouds, user data and the followers geography.
 class Profile(webapp.RequestHandler):
@@ -116,7 +236,7 @@ class Profile(webapp.RequestHandler):
 			# Something went wrong, perhaps the OAuth tokens expired or have been removed
 			# from the datastore.
 			error = {'title': "Something's Broken", 'message': "We're so sorry, but it seems that Foller.me is down.<br />We'll deal with this issue as soon as possible"}			
-			logging.error("Cannot createa a Twitter OAuth object. Lacking tokens?")
+			logging.error("Cannot create a Twitter OAuth object. Lacking tokens?")
 			
 			render(self, 'error.html', {'error': error})
 			return
@@ -396,10 +516,7 @@ def remove_stopwords(text):
 # Render a cloud based on a words dictionary. There seems to be some
 # magic going on here, have to revise and probably rewrite for easier
 # to understand and more elegant output.
-def get_cloud_html(words, url="http://search.twitter.com/search?q=%s"):
-	min_font_size = 12
-	max_font_size = 30
-	
+def get_cloud_html(words, url="http://search.twitter.com/search?q=%s", min_font_size=12, max_font_size=30):
 	maximum = max(words.values())
 	minimum = min(words.values())
 	
@@ -411,8 +528,6 @@ def get_cloud_html(words, url="http://search.twitter.com/search?q=%s"):
 		min_output = 2
 	else:
 		min_output = 1
-	
-	logging.error("max/min: %s/%s" % (maximum, minimum))
 		
 	spread = maximum - minimum
 	if spread == 0: 
@@ -439,11 +554,26 @@ urls = [
 	(r'/about/?', About),
 	(r'/(\w+)/?', Profile),
 ]
+
+api_urls = [
+	(r'/', Home),
+	(r'/(\w+)/(hashtags|mentions|topics|all)\.(json|xhtml)/?', API),
+]
+
 application = webapp.WSGIApplication(urls, debug=True)
+application_api = webapp.WSGIApplication(api_urls, debug=True)
 
 # Run the application
 def main():
-	run_wsgi_app(application)
+	# Use the following two lines for debugging the API locally
+	#run_wsgi_app(application_api)
+	#return
+	
+	logging.error("Host was: %s", os.environ['HTTP_HOST'])
+	if os.environ['HTTP_HOST'] == 'api.foller.me':
+		run_wsgi_app(application_api)
+	else:
+		run_wsgi_app(application)
 
 if __name__ == '__main__':
 	main()
