@@ -39,7 +39,7 @@ class Home(webapp.RequestHandler):
 		if profile_name:
 			if '@' in profile_name:
 				profile_name = profile_name.replace('@', '')
-			self.redirect(profile_name + '/')
+			self.redirect(profile_name)
 		else:
 			self.redirect('/')
 
@@ -96,13 +96,18 @@ class Ajax(webapp.RequestHandler):
 					# since we don't have any lat,lon points to show off.
 					else:
 						if location:
-							geo = Geo(location=location, geo="None")
+							clean_location = location.replace('\n', ' ').strip()
+							geo = Geo(location=clean_location, geo="None")
 							geo.put()
 						del locations[location]
 
 				render(self, 'map.html', {'locations': list(locations.values())})
 
-
+# This simply redirects to our PB Wiki
+class HomeAPI(webapp.RequestHandler):
+	def get(self):
+		self.redirect('http://follerme.pbworks.com/')
+		
 # Used to serve the API methods, mostly like the Profile class
 # but less data is used.
 class API(webapp.RequestHandler):
@@ -119,7 +124,7 @@ class API(webapp.RequestHandler):
 			# Something went wrong, perhaps the OAuth tokens expired or have been removed
 			# from the datastore.
 			error = {'title': "Something's Broken", 'message': "We're so sorry, but it seems that Foller.me is down. We'll deal with this issue as soon as possible"}			
-			logging.error("API: Cannot create a Twitter OAuth object. Lacking tokens?")
+			logging.critical("API: Cannot create a Twitter OAuth object. Lacking tokens?")
 			
 			rendertext(self, encoder.encode({'error': error}))
 			return
@@ -140,7 +145,7 @@ class API(webapp.RequestHandler):
 				error['message'] = 'It seems that @%s is not tweeting at all.' % profile_name
 			
 			# Log the error, render the template and return
-			logging.error("API: Code %s: %s - " % (e.code, e.msg) + "Request was: %s" % profile_name)
+			logging.warning("API: Code %s: %s - " % (e.code, e.msg) + "Request was: %s" % profile_name)
 			rendertext(self, encoder.encode({'error': error}))
 			return
 		
@@ -149,7 +154,7 @@ class API(webapp.RequestHandler):
 		except IndexError, e:
 			# If timeline[0] is inaccessible then there were no tweets at all
 			error = {'title': 'Profile Empty', 'message': "There were no tweets by @%s at all." % profile_name}
-			logging.error("API: Accessed an empty profile: %s" % profile_name)
+			logging.warning("API: Accessed an empty profile: %s" % profile_name)
 			rendertext(self, encoder.encode({'error': error}))
 			return
 		
@@ -213,6 +218,18 @@ class API(webapp.RequestHandler):
 			data.update(mentions)
 			data.update(hashtags)
 			
+		# Let's see if we need to exclude anything
+		exclude = self.request.get('exclude', '')
+		for word in exclude.split(","):
+			m_word = '@' + word
+			h_word = '#' + word
+			if word in data:
+				del data[word]
+			if m_word in data:
+				del data[m_word]
+			if h_word in data:
+				del data[h_word]
+		
 		# Respond
 		if response_format == 'json':
 			rendertext(self, encoder.encode(data))
@@ -236,7 +253,7 @@ class Profile(webapp.RequestHandler):
 			# Something went wrong, perhaps the OAuth tokens expired or have been removed
 			# from the datastore.
 			error = {'title': "Something's Broken", 'message': "We're so sorry, but it seems that Foller.me is down.<br />We'll deal with this issue as soon as possible"}			
-			logging.error("Cannot create a Twitter OAuth object. Lacking tokens?")
+			logging.critical("Cannot create a Twitter OAuth object. Lacking tokens?")
 			
 			render(self, 'error.html', {'error': error})
 			return
@@ -257,7 +274,12 @@ class Profile(webapp.RequestHandler):
 				error['message'] = 'It seems that @<strong>%s</strong> is not tweeting at all.<br />Perhaps you should try somebody else:' % profile_name
 			
 			# Log the error, render the template and return
-			logging.error("Code %s: %s - " % (e.code, e.msg) + "Request was: %s" % profile_name)
+			logging.warning("Code %s: %s - " % (e.code, e.msg) + "Request was: %s" % profile_name)
+			render(self, 'error.html', {'error': error})
+			return
+		except urlfetch.DownloadError, e:
+			error = {'title': 'Overload Error', 'message': "We're sorry but it seems that we're overloaded.<br />Give us a few minutes and try again later."}
+			logging.warning("Download Error: %s" % e)
 			render(self, 'error.html', {'error': error})
 			return
 		
@@ -266,7 +288,7 @@ class Profile(webapp.RequestHandler):
 		except IndexError, e:
 			# If timeline[0] is inaccessible then there were no tweets at all
 			error = {'title': 'Profile Empty', 'message': "There were no tweets by @<strong>%s</strong> at all.<br />Perhaps it's a newly created account, give them some time..." % profile_name}
-			logging.error("Accessed an empty profile: %s" % profile_name)
+			logging.warning("Accessed an empty profile: %s" % profile_name)
 			render(self, 'error.html', {'error': error})
 			return
 		
@@ -556,24 +578,41 @@ urls = [
 ]
 
 api_urls = [
-	(r'/', Home),
+	(r'/', HomeAPI),
 	(r'/(\w+)/(hashtags|mentions|topics|all)\.(json|xhtml)/?', API),
 ]
 
 application = webapp.WSGIApplication(urls, debug=True)
 application_api = webapp.WSGIApplication(api_urls, debug=True)
 
+# Let's do some profiling
+def profile_main():
+    # This is the main function for profiling
+    # We've renamed our original main() above to real_main()
+    import cProfile, pstats, StringIO
+    prof = cProfile.Profile()
+    prof = prof.runctx("real_main()", globals(), locals())
+    stream = StringIO.StringIO()
+    stats = pstats.Stats(prof, stream=stream)
+    stats.sort_stats("time")  # Or cumulative
+    stats.print_stats(80)  # 80 = how many to print
+    # The rest is optional.
+    # stats.print_callees()
+    # stats.print_callers()
+    logging.info("Profile data:\n%s", stream.getvalue())
+
 # Run the application
-def main():
+def real_main():
 	# Use the following two lines for debugging the API locally
 	#run_wsgi_app(application_api)
 	#return
-	
-	logging.error("Host was: %s", os.environ['HTTP_HOST'])
+
 	if os.environ['HTTP_HOST'] == 'api.foller.me':
 		run_wsgi_app(application_api)
 	else:
 		run_wsgi_app(application)
+
+main = profile_main
 
 if __name__ == '__main__':
 	main()
