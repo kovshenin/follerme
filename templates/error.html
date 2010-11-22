@@ -4,13 +4,13 @@
 
 {% block body %}
 	<div class="ab_centered error"><form method="POST" action="/">
-		<img src="/static/images/logo.png" /><div class="title">{{ error.title }}</div>
+		<a href="/"><img src="/static/images/logo.png" alt="Foller.me Home" /></a><div class="title">{{ error.title }}</div>
 		<p class="error_desc">
 			{{ error.message }}<br />
-			<input type="text" value="type in a Twitter name" name="profile" class="twitter_input" style="margin-top:20px;" />
+			<input type="text" value="type in a Twitter name" name="profile" class="twitter_input activate" style="margin-top:20px;" />
 			<input type="submit" style="display:none" />
 		</p>
 		</form>
 	</div>
-	<div class="ab_bottom footer"><a href="http://blog.foller.me/about/">About</a>, <a href="http://blog.foller.me/">blog</a> or <a href="http://blog.foller.me/">feedback</a>. Developed by <a href="http://twitter.com/kovshenin">@kovshenin</a> © 2010 Foller.me</div>
+	{% include "footer_simple.html" %}
 {% endblock %}

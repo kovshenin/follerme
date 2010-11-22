@@ -181,6 +181,10 @@ class Profile(webapp.RequestHandler):
 		for entry in timeline:
 			data += " %s" % entry['text']
 		
+		# Remove all the URLs first
+		p = re.compile(r'((https?|ftp|gopher|telnet|file|notes|ms-help):((//)|(\\\\))+[\w\d:#@%/;$()~_?\+-=\\\.&]*)')
+		data = p.sub('', data)
+		
 		# Let's remove everything that doesn't match characters we allow.
 		p = re.compile(r'[^a-zA-Z0-9@#_]') # Add foreign languages here
 		data = p.sub(' ', data)

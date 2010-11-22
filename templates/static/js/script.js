@@ -1,9 +1,6 @@
 var map = null;
-var step = -1;
-var s3bucket_dir = "http://s3.foller.me";
 
 jQuery(document).ready(function(){
-	
 	jQuery(".twitter_input").focus(function(){
 		if (this.value == "type in a Twitter name")
 			this.value = "";
@@ -14,68 +11,10 @@ jQuery(document).ready(function(){
 			this.value = "type in a Twitter name";
 	});
 	
-	jQuery(".oauth_follow_link").click(function() {
-		jQuery(".oauth_follow").hide();
-		jQuery(".oauth_follow_loading").show();
-		
-		jQuery.post(fmData.request, "request=oauth&screen_name="+fmData.screen_name, function(data, textStatus) {
-			if (data.substr(0,3) == "200")
-			{
-				jQuery(".oauth_follow_text").html(data.substr(4));
-				jQuery(".oauth_follow_loading").hide();
-				jQuery(".oauth_follow").show();
-			}
-			else
-			{
-				jQuery(".oauth_follow_text").html("An error occoured!");
-				jQuery(".oauth_follow_loading").hide();
-				jQuery(".oauth_follow").show();
-			}
-		});
-		return false;
-	});
-	
-	jQuery("#tweet_profile").click(function() {
-		jQuery(".oauth_follow").hide();
-		jQuery(".oauth_follow_loading").show();
-		
-		jQuery.post(fmData.request, "request=oauth_tweet&screen_name="+fmData.screen_name, function(data, textStatus) {
-			if (data.substr(0,3) == "200")
-			{
-				jQuery(".oauth_follow_loading").hide();
-				jQuery(".oauth_follow").show();
-				jQuery("span.tweet_profile").html("Tweeted!");
-			}
-			else
-			{
-				jQuery(".oauth_follow_loading").hide();
-				jQuery(".oauth_follow").show();
-				alert("An error occoured!");
-			}
-		});
-		return false;
-	});
-	
-	jQuery(".collapse").click(function() {
-		var cookie_name = "fm_" + jQuery(this).attr("href").substr(1) + "_hidden";
-		var parent = this;
-		var obj = jQuery(this).parents(".rec_tweet").find(".the_tags");
-		jQuery(obj).slideToggle("slow", function() {
-			if (jQuery(obj).is(':visible'))
-			{
-				jQuery.cookie(cookie_name, null);
-				jQuery(parent).html("Collapse");
-			}
-			else
-			{
-				jQuery.cookie(cookie_name, "yes");
-				jQuery(parent).html("Expand");
-			}
-		});
-		return false;
-	});
+	jQuery(".activate").focus();
 });
 
+/* Fire an AJAX call to request a map */
 function getMap(username) {
 	jQuery.post('/ajax/gmap/', 'profile=' + username, function(data, textStatus) {
 		jQuery('.gmaps').html(data);
@@ -83,32 +22,14 @@ function getMap(username) {
 	});
 }
 
-/*function follerMeAction(action, param1, param2) {
-	if (action == "maps") {
-		if (!param2) param2 = "no";
-		jQuery.post(fmData.request, "request=maps&screen_name="+param1+"&location="+fmData.location, function(data, textStatus) {
-			jQuery(".gmaps").html(data);
-			jQuery("#map_container").fadeTo(2000, 1);
-		});
-	}
-	
-	if (action == "recent_update") {
-		jQuery.post(fmData.request, "request=recent_update", function(data, textStatus) {
-			jQuery("#recent_queries").fadeTo(1000, 0.01, function() {
-				jQuery("#recent_queries").html(data);
-				jQuery("#recent_queries").fadeTo(3000, 1);
-				setTimeout("follerMeAction('recent_update');", 10000);
-			});
-		});
-	}
-}*/
-
+/* Use this function to generate markers */
 function showPoint(lat, lng, html, self) { 
     point = new GLatLng(lat, lng);
     var marker = createMarker(point, html, self); 
     map.addOverlay(marker); 
 }
 
+/* And this function is the one that actually creates the markers on the map */
 function createMarker(point, html, self) {
 	var dir = (self) ? "self/" : "";
 	// Create a lettered icon for this point using our icon class
