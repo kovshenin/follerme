@@ -6,6 +6,10 @@ api_version: 1
 handlers:
 - url: /static
   static_dir: templates/static
+  
+- url: /admin/.*
+  script: main.py
+  login: admin
 
 - url: /.*
   script: main.py

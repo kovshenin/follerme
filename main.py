@@ -109,10 +109,20 @@ class Profile(webapp.RequestHandler):
 		# Prepare the context with our API keys used in the template.
 		context = {'google_maps_key': google_maps_key, 'api_key': api_key}
 		
+		# Create a Twitter OAuth object.
+		try:
+			twitter = getTwitterObject()
+		except AttributeError, e:
+			# Something went wrong, perhaps the OAuth tokens expired or have been removed
+			# from the datastore.
+			error = {'title': "Something's Broken", 'message': "We're so sorry, but it seems that Foller.me is down.<br />We'll deal with this issue as soon as possible"}			
+			logging.error("Cannot createa a Twitter OAuth object. Lacking tokens?")
+			
+			render(self, 'error.html', {'error': error})
+			return
+
 		# Fire a /statuses/user_timeline request, record parse the first entry for the user
 		# details.
-		twitter = getTwitterObject()
-		
 		try:
 			timeline = twitter.GetUserTimeline({'screen_name': profile_name, 'count': 100})
 		except urllib2.HTTPError, e:
@@ -121,7 +131,7 @@ class Profile(webapp.RequestHandler):
 			error = {'title': 'Unknown Error', 'message': "We're sorry, but an unknown error has occoured.<br />We'll very be glad if you <a href='http://twitter.com/kovshenin'>report this</a>."}
 			if e.code == 401:
 				error['title'] = 'Profile Protected'
-				error['message'] = "It seems that <strong>@%s</strong>'s tweets are protected.<br />Sorry, but there's nothing we can do at this point ;)" % profile_name
+				error['message'] = "It seems that @<strong>@%s</strong>'s tweets are protected.<br />Sorry, but there's nothing we can do at this point ;)" % profile_name
 			elif e.code == 404:
 				error['title'] = 'Not Found'
 				error['message'] = 'It seems that @<strong>%s</strong> is not tweeting at all.<br />Perhaps you should try somebody else:' % profile_name
@@ -130,8 +140,15 @@ class Profile(webapp.RequestHandler):
 			logging.error("Code %s: %s - " % (e.code, e.msg) + "Request was: %s" % profile_name)
 			render(self, 'error.html', {'error': error})
 			return
-			
-		profile = timeline[0]['user']
+		
+		try:	
+			profile = timeline[0]['user']
+		except IndexError, e:
+			# If timeline[0] is inaccessible then there were no tweets at all
+			error = {'title': 'Profile Empty', 'message': "There were no tweets by @<strong>%s</strong> at all.<br />Perhaps it's a newly created account, give them some time..." % profile_name}
+			logging.error("Accessed an empty profile: %s" % profile_name)
+			render(self, 'error.html', {'error': error})
+			return
 		
 		# We make some manipulations for the profile, since we don't want to output some fields
 		# (such as the created at field) the way Twitter passes them over to us. We convert that
@@ -233,7 +250,8 @@ class Admin(webapp.RequestHandler):
 				# Request an OAuth token and show the authorization URL on Twitter.
 				twitter = OAuthApi(consumer_key, consumer_secret)
 				credentials = twitter.getRequestToken()
-				self.response.out.write(twitter.getAuthorizationURL(credentials))
+				url = twitter.getAuthorizationURL(credentials)
+				self.response.out.write('<a href="%s">%s</a>' % (url, url))
 				
 				# Save the tokens to the datastore for later authentication
 				oauth_token = credentials['oauth_token']
