@@ -19,7 +19,7 @@ from oauthtwitter import OAuthApi
 consumer_key = 'cKlpH5jndEfrnhBQrrp8w'
 consumer_secret = 'reeYtKhTY7LRTwzXE5tmFrxwkD4lLVY9FgxrY5KFsE'
 api_key = 'cKlpH5jndEfrnhBQrrp8w'
-google_maps_key = 'ABQIAAAAXG5dungCtctVf8ll0MRanhR9iirwL7nBc9d2R7_tFiOfa5aC4RSTKOF-7Bi7s8MaO5KAlewwElCpIA'
+google_maps_key = 'ABQIAAAAXG5dungCtctVf8ll0MRanhS8x33voUDc7NMITWhA0MX8qZ_M_hTQt9MRazZ_htm3kW2tYUg8dmaDgA'
 
 # The home screen, nothing extra-ordinary, we just render
 # the template with an empty context.
