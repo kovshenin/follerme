@@ -133,7 +133,7 @@ class Profile(webapp.RequestHandler):
 				error['title'] = 'Profile Protected'
 				error['message'] = "It seems that @<strong>@%s</strong>'s tweets are protected.<br />Sorry, but there's nothing we can do at this point ;)" % profile_name
 			elif e.code == 404:
-				error['title'] = 'Not Found'
+				error['title'] = 'Profile Not Found'
 				error['message'] = 'It seems that @<strong>%s</strong> is not tweeting at all.<br />Perhaps you should try somebody else:' % profile_name
 			
 			# Log the error, render the template and return
@@ -186,7 +186,7 @@ class Profile(webapp.RequestHandler):
 		data = p.sub('', data)
 		
 		# Let's remove everything that doesn't match characters we allow.
-		p = re.compile(r'[:punct:\-\.\,\!\?\+\=]') # Add foreign languages here
+		p = re.compile(r'[\-\.\,\!\?\+\=\[\]\/\'\"]') # Add foreign languages here
 		data = p.sub(' ', data)
 		
 		# Remove all the stopwords and lowercase the data.
