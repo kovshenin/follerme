@@ -5,6 +5,7 @@ import time
 import os
 from datetime import datetime
 
+# Google's API
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp.util import run_wsgi_app
 from google.appengine.ext.webapp import template
@@ -13,8 +14,17 @@ from google.appengine.ext import db
 from google.appengine.api import urlfetch
 from google.appengine.api.labs import taskqueue
 
+# Twitter & OAuth
 from oauth import oauth
 from oauthtwitter import OAuthApi
+
+# JSON is used to encode API responses and decode task requests
+import simplejson.encoder
+import simplejson.decoder
+
+# These two objects can be used globally
+encoder = simplejson.encoder.JSONEncoder()
+decoder = simplejson.decoder.JSONDecoder()
 
 # API tokens and keys.
 consumer_key = 'cKlpH5jndEfrnhBQrrp8w'
@@ -71,6 +81,7 @@ class Ajax(webapp.RequestHandler):
 				# Loop through all the locations and query the Datastore for their
 				# Geo points (latitude and longitude) which could be pointed out
 				# on the map.
+				new_locations = []
 				for location in locations.keys():
 					query = Geo.all()
 					query.filter('location =', location)
@@ -97,10 +108,13 @@ class Ajax(webapp.RequestHandler):
 					else:
 						if location:
 							clean_location = location.replace('\n', ' ').strip()
-							geo = Geo(location=clean_location, geo="None")
-							geo.put()
+							new_locations.append(clean_location)
 						del locations[location]
 
+				# Let's add tasks for new locations
+				if new_locations:
+					taskqueue.add(url='/admin/tasks/', params={'task': 'geo-create', 'locations': encoder.encode(new_locations)}, method='POST')
+				
 				render(self, 'map.html', {'locations': list(locations.values())})
 
 # This simply redirects to our PB Wiki
@@ -112,9 +126,6 @@ class HomeAPI(webapp.RequestHandler):
 # but less data is used.
 class API(webapp.RequestHandler):
 	def get(self, profile_name, request_object, response_format):
-		import simplejson.encoder
-		encoder = simplejson.encoder.JSONEncoder()
-
 		context = {}
 		
 		# Create a Twitter OAuth object.
@@ -164,9 +175,8 @@ class API(webapp.RequestHandler):
 		profile['created_at'] = datetime.strptime(profile['created_at'], "%a %b %d %H:%M:%S +0000 %Y")
 		context['profile'] = profile
 		
-		# Let's submit this as a recent query into the datastore
-		recent = Recent(screen_name=profile['screen_name'], profile_image_url=profile['profile_image_url'])
-		recent.put()
+		# Let's submit this as a recent query into the datastore (via the task queue api)
+		taskqueue.add(url='/admin/tasks/', params={'task': 'recent-create', 'recent': encoder.encode({'screen_name': profile['screen_name'], 'profile_image_url': profile['profile_image_url']})}, method='POST')
 	
 		# The data string will hold all our text concatenated. Perhaps this is not the fastest way
 		# as strings are unchangable. Might convert this to a list in the future and then join if needed.
@@ -298,9 +308,8 @@ class Profile(webapp.RequestHandler):
 		profile['created_at'] = datetime.strptime(profile['created_at'], "%a %b %d %H:%M:%S +0000 %Y")
 		context['profile'] = profile
 		
-		# Let's submit this as a recent query into the datastore
-		recent = Recent(screen_name=profile['screen_name'], profile_image_url=profile['profile_image_url'])
-		recent.put()
+		# Let's submit this as a recent query into the datastore (via a task)
+		taskqueue.add(url='/admin/tasks/', params={'task': 'recent-create', 'recent': encoder.encode({'screen_name': profile['screen_name'], 'profile_image_url': profile['profile_image_url']})}, method='POST')
 		
 		# Let's get a list of 40 recent queries
 		recents = []
@@ -383,109 +392,139 @@ class About(webapp.RequestHandler):
 # operations. Use with care, protect with password. OAuth registration
 # and verification are handled here.
 class Admin(webapp.RequestHandler):
-		def get(self, action):
-			# Depending on the action requested /admin/<action>/
-			if action == 'register':
-				
-				# Register a Twitter user with the application using
-				# OAuth. Works with the Option model to store the request and
-				# access tokens.
-				
-				# Remove all the previous tokens matching oauth-* from the datastore.
-				options = Option.all()
-				options.filter('name >=', 'oauth-').filter('name <', 'oauth-' + u'\ufffd')
-				options.fetch(1000)
-				for option in options:
-					option.delete()
-				
-				# Request an OAuth token and show the authorization URL on Twitter.
-				twitter = OAuthApi(consumer_key, consumer_secret)
-				credentials = twitter.getRequestToken()
-				url = twitter.getAuthorizationURL(credentials)
-				self.response.out.write('<a href="%s">%s</a>' % (url, url))
-				
-				# Save the tokens to the datastore for later authentication
-				oauth_token = credentials['oauth_token']
-				oauth_token_secret = credentials['oauth_token_secret']
-				
-				# Record the tokens
-				opt = Option(name='oauth-request-token', value=oauth_token)
-				opt.put()
-				opt = Option(name='oauth-request-token-secret', value=oauth_token_secret)
-				opt.put()
-				
-			elif action == 'verify':
-				# Used to verify an initiated registration request. Request tokens should
-				# by now be stored in the data store. Retrieve them and initiate a change.
-				twitter = OAuthApi(consumer_key, consumer_secret)
-				oauth_verifier = self.request.get('oauth_verifier')
-				
-				options = Option.all()
-				options.filter('name =', 'oauth-request-token')
-				oauth_token = options.get()
-				
-				options = Option.all()
-				options.filter('name =', 'oauth-request-token-secret')
-				oauth_token_secret = options.get()
-				
-				# Form a request and ask Twitter to exchange request tokens for access tokens using
-				# an OAuth verifier (PIN code).
-				credentials = {'oauth_token': oauth_token.value, 'oauth_token_secret': oauth_token_secret.value, 'oauth_callback_confirmed': 'true'}
-				credentials = twitter.getAccessToken(credentials, oauth_verifier)
-				
-				# Record the access tokens and remove the previously stored request tokens.
-				access_token = Option(name='oauth-access-token', value=credentials['oauth_token'])
-				access_token_secret = Option(name='oauth-access-token-secret', value=credentials['oauth_token_secret'])
-				
-				oauth_token.delete()
-				oauth_token_secret.delete()
-				access_token.put()
-				access_token_secret.put()
-				
-				# Tokens are now saved, getTwitterObject can be used.
-				self.response.out.write("You are now registered as @%s!" % credentials['screen_name'])
+	def post(self, action):
+		
+		# Tasks workers, stuff that is actually executed by the Task Queue API
+		if action == 'tasks':
 			
-			# Uses the Task Queues API, although Cron jobs are more likely to fire
-			elif action == 'work':
-				taskqueue.add(url='/admin/worker/', params={'task': 'geo'}, method='GET')
-				self.response.out.write("Geo task added to queue")
-			
-			# Jobs that have to be carried out, either via Task Queues or via Cron
-			elif action == 'worker':
-				if self.request.get('task') == 'geo':
-					query = Geo.all()
-					query.filter('geo =', 'None')
-					results = query.fetch(10)
-					for result in results:
+			# Create new entries into the Geo entity in the datastore. Moved here
+			# to take load off the gmaps AJAX request.
+			if self.request.get('task') == 'geo-create':
+				locations = decoder.decode(self.request.get('locations', '[]'))
+				
+				for location in locations:
+					geo = Geo(location=location, geo='None')
+					geo.put()
+				
+				logging.info('New locations have been added to the datastore: %s' % locations)
+				rendertext(self, 'New locations have been added to the datastore')
+				
+			# Create an entry to the Recents entity in the datastore, we moved this here
+			# to take load off the profile request page.
+			if self.request.get('task') == 'recent-create':
+				recent = decoder.decode(self.request.get('recent'))
+				if recent:
+					r = Recent(screen_name=recent['screen_name'], profile_image_url=recent['profile_image_url'])
+					r.put()
+					
+					logging.info('Recent entry has been added to the datastore: %s' % recent['screen_name'])
+					
+				rendertext(self, 'Recent entry have been processed')
+				
+			# Parse existing Geo entities with None as lat, lon, try to
+			# geocode them from Google Maps API
+			elif self.request.get('task') == 'geocode':
+				query = Geo.all()
+				query.filter('geo =', 'None')
+				results = query.fetch(10)
+				for result in results:
+					try:
+						# If the location format is already a Geo string
+						lat, lon = result.location.split(",")
+						lat = float(lat)
+						lon = float(lon)
+						result.geo = "%s,%s" % (lat, lon)
+						result.put()
+						break
+					except:
+						pass
+					
+					# Prepare and fire a request to the Google Maps API
+					form_fields = {'q': result.location.encode('utf-8'), 'output': 'csv', 'key': 'ABQIAAAAXG5dungCtctVf8ll0MRanhR9iirwL7nBc9d2R7_tFiOfa5aC4RSTKOF-7Bi7s8MaO5KAlewwElCpIA'}
+					form_data = urllib.urlencode(form_fields)
+					
+					google_maps = urlfetch.fetch(url='http://maps.google.com/maps/geo?' + form_data)
+					if google_maps.status_code == 200 and len(google_maps.content):
 						try:
-							# If the location format is already a Geo string
-							lat, lon = result.location.split(",")
-							lat = float(lat)
-							lon = float(lon)
+							# Parse and record the result if it's valid
+							status, n, lat, lon = google_maps.content.split(',')
 							result.geo = "%s,%s" % (lat, lon)
 							result.put()
-							break
 						except:
 							pass
-						
-						# Prepare and fire a request to the Google Maps API
-						form_fields = {'q': result.location.encode('utf-8'), 'output': 'csv', 'key': 'ABQIAAAAXG5dungCtctVf8ll0MRanhR9iirwL7nBc9d2R7_tFiOfa5aC4RSTKOF-7Bi7s8MaO5KAlewwElCpIA'}
-						form_data = urllib.urlencode(form_fields)
-						
-						google_maps = urlfetch.fetch(url='http://maps.google.com/maps/geo?' + form_data)
-						if google_maps.status_code == 200 and len(google_maps.content):
-							try:
-								# Parse and record the result if it's valid
-								status, n, lat, lon = google_maps.content.split(',')
-								result.geo = "%s,%s" % (lat, lon)
-								result.put()
-							except:
-								pass
-						
-						# Google Maps doesn't like too many requests
-						time.sleep(1)
-						
-				self.response.out.write("Geo locations job complete")
+					
+					# Google Maps doesn't like too many requests
+					time.sleep(1)
+
+				rendertext(self, "Geo locations job complete")
+
+	def get(self, action):
+		# Depending on the action requested /admin/<action>/
+		if action == 'register':
+			
+			# Register a Twitter user with the application using
+			# OAuth. Works with the Option model to store the request and
+			# access tokens.
+			
+			# Remove all the previous tokens matching oauth-* from the datastore.
+			options = Option.all()
+			options.filter('name >=', 'oauth-').filter('name <', 'oauth-' + u'\ufffd')
+			options.fetch(1000)
+			for option in options:
+				option.delete()
+			
+			# Request an OAuth token and show the authorization URL on Twitter.
+			twitter = OAuthApi(consumer_key, consumer_secret)
+			credentials = twitter.getRequestToken()
+			url = twitter.getAuthorizationURL(credentials)
+			self.response.out.write('<a href="%s">%s</a>' % (url, url))
+			
+			# Save the tokens to the datastore for later authentication
+			oauth_token = credentials['oauth_token']
+			oauth_token_secret = credentials['oauth_token_secret']
+			
+			# Record the tokens
+			opt = Option(name='oauth-request-token', value=oauth_token)
+			opt.put()
+			opt = Option(name='oauth-request-token-secret', value=oauth_token_secret)
+			opt.put()
+			
+		elif action == 'verify':
+			# Used to verify an initiated registration request. Request tokens should
+			# by now be stored in the data store. Retrieve them and initiate a change.
+			twitter = OAuthApi(consumer_key, consumer_secret)
+			oauth_verifier = self.request.get('oauth_verifier')
+			
+			options = Option.all()
+			options.filter('name =', 'oauth-request-token')
+			oauth_token = options.get()
+			
+			options = Option.all()
+			options.filter('name =', 'oauth-request-token-secret')
+			oauth_token_secret = options.get()
+			
+			# Form a request and ask Twitter to exchange request tokens for access tokens using
+			# an OAuth verifier (PIN code).
+			credentials = {'oauth_token': oauth_token.value, 'oauth_token_secret': oauth_token_secret.value, 'oauth_callback_confirmed': 'true'}
+			credentials = twitter.getAccessToken(credentials, oauth_verifier)
+			
+			# Record the access tokens and remove the previously stored request tokens.
+			access_token = Option(name='oauth-access-token', value=credentials['oauth_token'])
+			access_token_secret = Option(name='oauth-access-token-secret', value=credentials['oauth_token_secret'])
+			
+			oauth_token.delete()
+			oauth_token_secret.delete()
+			access_token.put()
+			access_token_secret.put()
+			
+			# Tokens are now saved, getTwitterObject can be used.
+			self.response.out.write("You are now registered as @%s!" % credentials['screen_name'])
+		
+		# Uses the Task Queues API
+		elif action == 'cron':
+			if self.request.get('task') == 'geocode':
+				taskqueue.add(url='/admin/tasks/', params={'task': 'geocode'}, method='POST')
+				rendertext(self, "Geo task added to queue")
 
 # Used to render templates with a global context
 def render(obj, tpl='default.html', context={}):
@@ -606,10 +645,12 @@ def real_main():
 	# Use the following two lines for debugging the API locally
 	#run_wsgi_app(application_api)
 	#return
-
-	if os.environ['HTTP_HOST'] == 'api.foller.me':
-		run_wsgi_app(application_api)
-	else:
+	try:
+		if os.environ['HTTP_HOST'] == 'api.foller.me':
+			run_wsgi_app(application_api)
+		else:
+			run_wsgi_app(application)
+	except KeyError, e:
 		run_wsgi_app(application)
 
 main = profile_main

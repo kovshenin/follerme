@@ -1,4 +1,4 @@
 cron:
 - description: Geo Locations
-  url: /admin/worker/?task=geo
+  url: /admin/cron/?task=geocode
   schedule: every 5 minutes synchronized
