@@ -7,6 +7,10 @@ handlers:
 - url: /static
   static_dir: templates/static
   
+- url: /_ah/queue/deferred
+  script: $PYTHON_LIB/google/appengine/ext/deferred/handler.py
+  login: admin
+
 - url: /admin/.*
   script: main.py
   login: admin
@@ -16,3 +20,9 @@ handlers:
 
 builtins:
 - datastore_admin: on
+
+error_handlers:
+  - file: templates/error_default.html
+
+  - error_code: over_quota
+    file: templates/error_over_quota.html

@@ -3,16 +3,18 @@ import urllib, urllib2
 import logging
 import time
 import os
+import sys
 from datetime import datetime
+import itertools
 
 # Google's API
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp.util import run_wsgi_app
 from google.appengine.ext.webapp import template
 
-from google.appengine.ext import db
 from google.appengine.api import urlfetch
 from google.appengine.api.labs import taskqueue
+from google.appengine.ext import deferred
 
 # Twitter & OAuth
 from oauth import oauth
@@ -21,6 +23,9 @@ from oauthtwitter import OAuthApi
 # JSON is used to encode API responses and decode task requests
 import simplejson.encoder
 import simplejson.decoder
+
+from models import Geo, Recent, Option
+import tasks
 
 # These two objects can be used globally
 encoder = simplejson.encoder.JSONEncoder()
@@ -426,7 +431,7 @@ class Admin(webapp.RequestHandler):
 			elif self.request.get('task') == 'geocode':
 				query = Geo.all()
 				query.filter('geo =', 'None')
-				results = query.fetch(10)
+				results = query.fetch(1)
 				for result in results:
 					try:
 						# If the location format is already a Geo string
@@ -454,7 +459,7 @@ class Admin(webapp.RequestHandler):
 							pass
 					
 					# Google Maps doesn't like too many requests
-					time.sleep(1)
+					#time.sleep(1)
 
 				rendertext(self, "Geo locations job complete")
 
@@ -523,7 +528,12 @@ class Admin(webapp.RequestHandler):
 		# Uses the Task Queues API
 		elif action == 'cron':
 			if self.request.get('task') == 'geocode':
-				taskqueue.add(url='/admin/tasks/', params={'task': 'geocode'}, method='POST')
+				#def geocode_queue_add():
+				#	taskqueue.add(queue_name='geocoding', url='/admin/tasks/', params={'task': 'geocode'}, method='POST')
+					
+				for i in range(2, 100, 2):
+					deferred.defer(tasks.geocode, _countdown=i, _queue='geocoding')
+				
 				rendertext(self, "Geo task added to queue")
 
 # Used to render templates with a global context
@@ -534,21 +544,6 @@ def render(obj, tpl='default.html', context={}):
 def rendertext(obj, text):
 	obj.response.out.write(text)
 
-# The Option model, used to store OAuth tokens and other settings
-class Option(db.Model):
-	name = db.StringProperty(required=True)
-	value = db.StringProperty()
-	
-# Used to store the geo locations to geo-points relations
-class Geo(db.Model):
-	location = db.StringProperty(required=True)
-	geo = db.StringProperty(required=True, multiline=True)
-	
-# Used to store recent queries in the datastore
-class Recent(db.Model):
-	screen_name = db.StringProperty(required=True)
-	profile_image_url = db.StringProperty(required=True)
-	published = db.DateTimeProperty(required=True, auto_now=True, auto_now_add=True)
 
 # Returns a valid (authenticated) twitter object
 def getTwitterObject():
@@ -608,6 +603,7 @@ def get_cloud_html(words, url="http://search.twitter.com/search?q=%s", min_font_
 	return ' '.join(result)
 
 # Accessible URLs, others in app.yaml
+
 urls = [
 	(r'/', Home),
 	(r'/admin/(\w+)/?', Admin),
@@ -633,12 +629,13 @@ def profile_main():
     prof = prof.runctx("real_main()", globals(), locals())
     stream = StringIO.StringIO()
     stats = pstats.Stats(prof, stream=stream)
-    stats.sort_stats("time")  # Or cumulative
+    stats.sort_stats("cumulative")  # Or cumulative
     stats.print_stats(80)  # 80 = how many to print
     # The rest is optional.
     # stats.print_callees()
     # stats.print_callers()
-    logging.info("Profile data:\n%s", stream.getvalue())
+    #logging.info("Profile data:\n%s", stream.getvalue())
+    print "<!--\nProfile data:\n%s\n-->" % stream.getvalue()
 
 # Run the application
 def real_main():

@@ -1,0 +1,6 @@
+queue:
+- name: default
+  rate: 5/s
+- name: geocoding
+  rate: 0.5/s
+  bucket_size: 1
