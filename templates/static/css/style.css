@@ -488,9 +488,9 @@ input.twitter_input:focus {
 
 #map_container {
 	display:block;
-	filter:alpha(opacity=1);
+	/*filter:alpha(opacity=1);
 	-moz-opacity:.01;
-	opacity:.01;
+	opacity:.01;*/
 }
 
 #map .gmnoprint em {

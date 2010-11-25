@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Processing: {{ screen_name }} - Foller.me{% endblock %}
+
+{% block body %}
+	<div class="ab_centered error">
+		<a href="/"><img src="/static/images/logo.png" alt="Foller.me Home" /></a><div class="title">Just a moment...</div>
+		<p class="error_desc">
+			We're parsing tweets by <strong>@{{screen_name}}</strong>.<br />This won't take longer than a few seconds.
+		</p>
+	</div>
+	
+	<script>
+		var lock_timeline = true;
+		var lock_followers = true;
+		var post_data = {};
+		var timeline_post = {};
+		var followers_post = {};
+		var screen_name = "{{ screen_name }}";
+		
+		jQuery(document).ready(function($) {
+			text = "";
+
+			$.getJSON("http://api.twitter.com/1/statuses/followers.json?screen_name=" + screen_name + "&callback=?&suppress_response_codes=1", function (data) {
+				followers = [];
+				for (i = 0; i < data.length; i++) {
+					followers.push($.param({screen_name: data[i].screen_name, location: data[i].location, profile_image_url: data[i].profile_image_url }));
+				}
+				followers_post = { 'followers[]': followers };
+				lock_followers = false;
+			});
+
+			$.getJSON("http://api.twitter.com/1/statuses/user_timeline.json?screen_name=" + screen_name + "&count=20&callback=?&suppress_response_codes=1", function (data) {
+				profile = false
+				for (i = 0; i < data.length; i++) {
+					if (i == 0) { profile = data[i].user; }
+					text = text + " " + data[i].text;
+				}
+
+				timeline_post = { screen_name: screen_name, text: text, profile: $.param(profile) }
+				lock_timeline = false;
+			});
+			
+			submit();
+			return false;
+		});
+		
+		function submit() {
+			if (!lock_timeline && !lock_followers) {
+				post_data = jQuery.extend(timeline_post, followers_post);
+				jQuery.post('/ajax/request/', post_data, function(data) {
+					 location.reload();
+				});
+				return false;
+			}
+			else { setTimeout('submit()', 1000); }
+		}
+	</script>
+	
+	{% include "footer_simple.html" %}
+{% endblock %}

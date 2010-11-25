@@ -15,3 +15,8 @@ class Recent(db.Model):
 	screen_name = db.StringProperty(required=True)
 	profile_image_url = db.StringProperty(required=True)
 	published = db.DateTimeProperty(required=True, auto_now=True, auto_now_add=True)
+
+class Cache(db.Model):
+	name = db.StringProperty(required=True)
+	value = db.TextProperty()
+	published = db.DateTimeProperty(required=True, auto_now=True, auto_now_add=True)

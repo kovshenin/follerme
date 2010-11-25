@@ -1,17 +1,17 @@
 var map = null;
 
-jQuery(document).ready(function(){
-	jQuery(".twitter_input").focus(function(){
+jQuery(document).ready(function($){
+	$(".twitter_input").focus(function(){
 		if (this.value == "type in a Twitter name")
 			this.value = "";
 	});
 	
-	jQuery(".twitter_input").blur(function(){
+	$(".twitter_input").blur(function(){
 		if (this.value == "")
 			this.value = "type in a Twitter name";
 	});
 	
-	jQuery(".activate").focus();
+	$(".activate").focus();
 });
 
 /* Fire an AJAX call to request a map */

@@ -4,7 +4,7 @@ import logging
 import time
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 import itertools
 
 # Google's API
@@ -24,7 +24,7 @@ from oauthtwitter import OAuthApi
 import simplejson.encoder
 import simplejson.decoder
 
-from models import Geo, Recent, Option
+from models import Geo, Recent, Option, Cache
 import tasks
 
 # These two objects can be used globally
@@ -121,6 +121,133 @@ class Ajax(webapp.RequestHandler):
 					taskqueue.add(url='/admin/tasks/', params={'task': 'geo-create', 'locations': encoder.encode(new_locations)}, method='POST')
 				
 				render(self, 'map.html', {'locations': list(locations.values())})
+		
+		elif action == 'request':
+			profile_data = self.request.get('profile', '').split('&')
+			text_data = self.request.get('text', '')
+			followers_data = self.request.POST.getall('followers[]')
+			screen_name = self.request.get('screen_name', '')
+			
+			try:
+				followers = []
+				for follower in followers_data:
+					attributes = {}
+					for attr in follower.split('&'):
+						k,v = attr.split('=')
+						
+						# Unquote
+						k = urllib.unquote_plus(str(k))
+						v = urllib.unquote_plus(str(v))
+						
+						# Javascript passes nulls as 'null'
+						if v == 'null':
+							v = None
+						attributes[k] = v
+
+					# Append the set of attributes to the followers list
+					followers.append(attributes)
+				
+				profile = {}
+				logging.error("Profile data: |%s|" % profile_data)
+				for p in profile_data:
+					k,v = p.split('=')
+					profile[str(k)] = urllib.unquote_plus(str(v))
+			
+			except:
+				clear_profile_cache(screen_name)
+				cache = Cache(name='profile:' + screen_name.lower(), value=encoder.encode({'error': True, 'screen_name': screen_name}))
+				cache.put()
+				
+				rendertext(self, encoder.encode({'status': 'OK'}))
+				return
+					
+			# Remove unwanted characters
+			data = clean_data(text_data)
+			
+			# The three dicts will hold our words and the number of times they've
+			# been used for later tag cloud generation.
+			topics = {}
+			mentions = {}
+			hashtags = {}
+			
+			# Loop through all the words, separate them into topics, hashtags and mentions.
+			for word in data.split():
+				if word.startswith('@'):
+					d = mentions
+				elif word.startswith('#'):
+					d = hashtags
+				else:
+					d = topics
+					
+				if word in d:
+					d[word] += 1
+				else:
+					d[word] = 1
+			
+			
+			locations = {}
+			# Loop through each follower and add a location if it does not exist.
+			# Otherwise add the user to the list on an existing location. This way
+			# we're grouping followers from the same locations.
+			for follower in followers:
+				location = str(follower['location']).decode('utf-8')
+				if location in locations:
+					locations[location]['users'].append(follower)
+				else:
+					locations[location] = {'name': location, 'lat': 0, 'lon': 0, 'users': [follower]}
+					
+			logging.error(locations)
+			
+			# Loop through all the locations and query the Datastore for their
+			# Geo points (latitude and longitude) which could be pointed out
+			# on the map.
+			new_locations = []
+			for location in locations.keys():
+				query = Geo.all()
+				query.filter('location =', location)
+				g = query.get()
+				
+				# We don't want empty locations, neither do we want locations
+				# recorded as None, which are temporary stored until the cron
+				# jobs resolves them into valid geo points.
+				if g:
+					if g.geo != 'None':
+						if g.geo != '0,0':
+							# If a location exists, we set its lat and lon values that are then manipulated
+							# via javascript and pointed out on the map.
+							locations[location]['lat'], locations[location]['lon'] = g.geo.split(',')
+						else:
+							# If the location's geo address is 0,0 we remove it from the locations list
+							# since we don't want to show irrelevant locations.
+							del locations[location]
+				
+				# If the query returned no results, we verify if the location is valid
+				# and add it to the Datastore with a value of None, for later processing
+				# by the cron jobs. We delete the location from the locations dict anyways
+				# since we don't have any lat,lon points to show off.
+				else:
+					if location:
+						clean_location = location.replace('\n', ' ').strip()
+						new_locations.append(clean_location)
+					del locations[location]
+
+			# Let's add tasks for new locations
+			if new_locations:
+				taskqueue.add(url='/admin/tasks/', params={'task': 'geo-create', 'locations': encoder.encode(new_locations)}, method='POST')
+			
+			# Make this a list so that we could pass it on to the template afterwards
+			locations = list(locations.values())
+			
+			# Remove old versions
+			clear_profile_cache(profile['screen_name'])
+			
+			# Save the cache
+			cached_data = {'profile': profile, 'topics_cloud_html': get_cloud_html(topics), 'mentions_cloud_html': get_cloud_html(mentions, url="/%s"), 'hashtags_cloud_html': get_cloud_html(hashtags), 'locations': locations}
+			cache = Cache(name='profile:' + profile['screen_name'].lower(), value=encoder.encode(cached_data))
+			cache.put()
+			
+			rendertext(self, encoder.encode({'status': 'OK'}))
+			return
 
 # This simply redirects to our PB Wiki
 class HomeAPI(webapp.RequestHandler):
@@ -256,11 +383,73 @@ class API(webapp.RequestHandler):
 # Perhaps the most complex view. This is the profile view with the topics, hashtags
 # and mentions clouds, user data and the followers geography.
 class Profile(webapp.RequestHandler):
-	def get(self, profile_name):
+	
+	# Use this function to catch a cached profile
+	def get_cached_profile(self, screen_name):
+		cache = Cache.all()
+		cache.filter('name =', 'profile:' + screen_name.lower())
+		cache = cache.get()
 		
-		# Prepare the context with our API keys used in the template.
+		outdated = False
+		
+		# Let's see if it's outdated, give it 30 seconds
+		if cache:
+			if cache.published + timedelta(seconds=30) < datetime.now():
+				outdated = True
+
+		# Return a tuple. Beware ;)
+		return (cache, outdated)
+		
+	# Our main bubble
+	def get(self, screen_name):
 		context = {'google_maps_key': google_maps_key, 'api_key': api_key}
 		
+		# Tuple returned from get_cached_profile. Grab the user agent.
+		cached, outdated = self.get_cached_profile(screen_name)
+		user_agent = self.request.headers.get('User-Agent', None)
+		
+		# If the profile is not cached, render the request screen (js work).
+		# If it is cached but outdated, go with the same request screen, but
+		# if it's outdated and Googlebot came around, we show him the outdated version.
+		
+		if not cached:
+			render(self, 'request.html', {'screen_name': screen_name})
+			return
+		else:
+			if outdated and 'Googlebot' not in user_agent:
+				render(self, 'request.html', {'screen_name': screen_name})
+				return
+
+			# Cached values are json encoded, decode and get rid of the cached object
+			cached_values = decoder.decode(cached.value)
+			del cached
+			
+			if 'error' in cached_values:
+				error = {'title': "Something's Wrong", 'message': "We're so sorry, but it seems that something went wrong.<br /><strong>@%s</strong> doesn't exist, is protected or has no tweets at all." % screen_name}			
+				logging.error("Something went wrong... via Javascript")
+
+				render(self, 'error.html', {'error': error})
+				return
+			
+			# Combine the cached values with the context and get rid of cached values
+			context.update(cached_values)
+			del cached_values
+			
+			# Parse the created date, since we wanna pass a datetime object to the template.
+			context['profile']['created_at'] = datetime.strptime(context['profile']['created_at'], "%a %b %d %H:%M:%S +0000 %Y")
+			profile = context['profile']
+			
+			# Let's get a list of 40 recent queries
+			recents = get_recent_queries()
+			context['recents'] = recents
+						
+			# Let's submit this as a recent query into the datastore (via a task)
+			taskqueue.add(url='/admin/tasks/', params={'task': 'recent-create', 'recent': encoder.encode({'screen_name': profile['screen_name'], 'profile_image_url': profile['profile_image_url']})}, method='POST')
+			
+			render(self, "profile.html", context)
+			return
+
+		""" Error handling
 		# Create a Twitter OAuth object.
 		try:
 			twitter = getTwitterObject()
@@ -306,87 +495,8 @@ class Profile(webapp.RequestHandler):
 			logging.warning("Accessed an empty profile: %s" % profile_name)
 			render(self, 'error.html', {'error': error})
 			return
+		"""
 		
-		# We make some manipulations for the profile, since we don't want to output some fields
-		# (such as the created at field) the way Twitter passes them over to us. We convert that
-		# into a valid datetime object.
-		profile['created_at'] = datetime.strptime(profile['created_at'], "%a %b %d %H:%M:%S +0000 %Y")
-		context['profile'] = profile
-		
-		# Let's submit this as a recent query into the datastore (via a task)
-		taskqueue.add(url='/admin/tasks/', params={'task': 'recent-create', 'recent': encoder.encode({'screen_name': profile['screen_name'], 'profile_image_url': profile['profile_image_url']})}, method='POST')
-		
-		# Let's get a list of 40 recent queries
-		recents = []
-		recent_screen_names = []
-		query = Recent.all()
-		query.order('-published')
-		for recent in query:
-			if recent.screen_name not in recent_screen_names:
-				recents.append(recent)
-				recent_screen_names.append(recent.screen_name)
-				if len(recents) >= 40:
-					break
-		#recents = query.fetch(40)
-		
-		context['recents'] = recents
-		
-		# The data string will hold all our text concatenated. Perhaps this is not the fastest way
-		# as strings are unchangable. Might convert this to a list in the future and then join if needed.
-		data = ""
-		for entry in timeline:
-			data += " %s" % entry['text']
-		
-		# Remove all the URLs first
-		p = re.compile(r'((https?|ftp|gopher|telnet|file|notes|ms-help):((//)|(\\\\))+[\w\d:#@%/;$()~_?\+-=\\\.&]*)')
-		data = p.sub('', data)
-		
-		# Let's remove everything that doesn't match characters we allow.
-		p = re.compile(r'[\-\.\,\!\?\+\=\[\]\/\'\"]') # Add foreign languages here
-		data = p.sub(' ', data)
-		
-		# Remove all the stopwords and lowercase the data.
-		data = remove_stopwords(data)
-		data = data.lower()
-		
-		# The three dicts will hold our words and the number of times they've
-		# been used for later tag cloud generation.
-		topics = {}
-		mentions = {}
-		hashtags = {}
-		
-		# Loop through all the words, separate them into topics, hashtags and mentions.
-		for word in data.split():
-			if word.startswith('@'):
-				d = mentions
-			elif word.startswith('#'):
-				d = hashtags
-			else:
-				d = topics
-				
-			if word in d:
-				d[word] += 1
-			else:
-				d[word] = 1
-		
-		# Provide the context with th ready cloud HTMLs for topics, hashtags and mentions.
-		# Then finally render the template.
-		try:
-			context['topics_cloud_html'] = get_cloud_html(topics)
-		except:
-			pass
-		
-		try:
-			context['mentions_cloud_html'] = get_cloud_html(mentions, url="/%s")
-		except:
-			pass
-		
-		try:
-			context['hashtags_cloud_html'] = get_cloud_html(hashtags)
-		except:
-			pass
-				
-		render(self, "profile.html", context)
 
 # Used to render the about page
 class About(webapp.RequestHandler):
@@ -573,8 +683,11 @@ def remove_stopwords(text):
 # magic going on here, have to revise and probably rewrite for easier
 # to understand and more elegant output.
 def get_cloud_html(words, url="http://search.twitter.com/search?q=%s", min_font_size=12, max_font_size=30):
-	maximum = max(words.values())
-	minimum = min(words.values())
+	try:
+		maximum = max(words.values())
+		minimum = min(words.values())
+	except:
+		return
 	
 	count = len(words)
 	
@@ -601,6 +714,43 @@ def get_cloud_html(words, url="http://search.twitter.com/search?q=%s", min_font_
 			result.append('<a rel="%(rel)s" style="font-size: %(size)spx" class="tag_cloud" href="%(url)s" title="\'%(word)s\' has been used %(count)s times">%(word)s</a>' % {'size': int(size), 'word': word, 'url': url % word_url, 'count': c, 'rel': rel})
 			
 	return ' '.join(result)
+
+# Use this to remove links and unwanted symbols, stopwords, etc.
+def clean_data(data):
+	# Remove all the URLs first
+	p = re.compile(r'((https?|ftp|gopher|telnet|file|notes|ms-help):((//)|(\\\\))+[\w\d:#@%/;$()~_?\+-=\\\.&]*)')
+	data = p.sub('', data)
+	
+	# Let's remove everything that doesn't match characters we allow.
+	p = re.compile(r'[\-\.\,\!\?\+\=\[\]\/\'\"]') # Add foreign languages here
+	data = p.sub(' ', data)
+	
+	# Remove all the stopwords and lowercase the data.
+	data = remove_stopwords(data)
+	data = data.lower()
+	
+	return data
+
+# Get recent queries into a list
+def get_recent_queries():
+	recents = []
+	recent_screen_names = []
+	query = Recent.all()
+	query.order('-published')
+	for recent in query:
+		if recent.screen_name not in recent_screen_names:
+			recents.append(recent)
+			recent_screen_names.append(recent.screen_name)
+			if len(recents) >= 40:
+				break
+				
+	return recents
+
+def clear_profile_cache(screen_name):
+	q = Cache.all()
+	q.filter('name =', 'profile:' + screen_name.lower())
+	for c in q:
+		c.delete()
 
 # Accessible URLs, others in app.yaml
 
@@ -651,7 +801,7 @@ def real_main():
 	except KeyError, e:
 		run_wsgi_app(application)
 
-main = profile_main
+main = real_main
 
 if __name__ == '__main__':
 	main()
