@@ -22,7 +22,5 @@ builtins:
 - datastore_admin: on
 
 error_handlers:
-  - file: templates/error_default.html
-
   - error_code: over_quota
     file: templates/error_over_quota.html

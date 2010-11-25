@@ -614,6 +614,7 @@ urls = [
 
 api_urls = [
 	(r'/', HomeAPI),
+	(r'/admin/(\w+)/?', Admin),
 	(r'/(\w+)/(hashtags|mentions|topics|all)\.(json|xhtml)/?', API),
 ]
 
