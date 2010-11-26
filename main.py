@@ -148,7 +148,6 @@ class Ajax(webapp.RequestHandler):
 					followers.append(attributes)
 				
 				profile = {}
-				logging.error("Profile data: |%s|" % profile_data)
 				for p in profile_data:
 					k,v = p.split('=')
 					profile[str(k)] = urllib.unquote_plus(str(v))
@@ -196,8 +195,6 @@ class Ajax(webapp.RequestHandler):
 				else:
 					locations[location] = {'name': location, 'lat': 0, 'lon': 0, 'users': [follower]}
 					
-			logging.error(locations)
-			
 			# Loop through all the locations and query the Datastore for their
 			# Geo points (latitude and longitude) which could be pointed out
 			# on the map.

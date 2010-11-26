@@ -30,7 +30,7 @@
 				lock_followers = false;
 			});
 
-			$.getJSON("http://api.twitter.com/1/statuses/user_timeline.json?screen_name=" + screen_name + "&count=20&callback=?&suppress_response_codes=1", function (data) {
+			$.getJSON("http://api.twitter.com/1/statuses/user_timeline.json?screen_name=" + screen_name + "&count=200&callback=?&suppress_response_codes=1", function (data) {
 				profile = false
 				for (i = 0; i < data.length; i++) {
 					if (i == 0) { profile = data[i].user; }
@@ -48,8 +48,8 @@
 		function submit() {
 			if (!lock_timeline && !lock_followers) {
 				post_data = jQuery.extend(timeline_post, followers_post);
-				jQuery.post('/ajax/request/', post_data, function(data) {
-					 location.reload();
+				jQuery.post('/ajax/request/?req={{ screen_name }}', post_data, function(data) {
+					 //location.reload();
 				});
 				return false;
 			}
