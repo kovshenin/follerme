@@ -608,7 +608,7 @@ def clean_data(data):
 	data = p.sub('', data)
 	
 	# Let's remove everything that doesn't match characters we allow.
-	p = re.compile(r'[\-\.\,\!\?\+\=\[\]\/\'\"]') # Add foreign languages here
+	p = re.compile(r'[\-\.\,\!\?\+\=\[\]\/\'\"]\:\)\(\;') # Add foreign languages here
 	data = p.sub(' ', data)
 	
 	# Remove all the stopwords and lowercase the data.
