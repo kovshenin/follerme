@@ -57,7 +57,6 @@ def create_recent(recent):
 	if count > 80:
 		recents.order('published')
 		recents = recents.fetch(count - 40)
-		for recent in recents:
-			recent.delete()
+		db.delete(recents)
 			
 		logging.info('Removing some recent entries, was > 80, now < 40')
