@@ -351,7 +351,7 @@ class Profile(webapp.RequestHandler):
 		
 		# Let's see if it's outdated, give it 1 hour
 		if cache:
-			if cache.published + timedelta(hours=1) < datetime.now():
+			if cache.published + timedelta(seconds=1) < datetime.now():
 				outdated = True
 
 		# Return a tuple. Beware ;)
@@ -608,7 +608,7 @@ def clean_data(data):
 	data = p.sub('', data)
 	
 	# Let's remove everything that doesn't match characters we allow.
-	p = re.compile(r'[\-\.\,\!\?\+\=\[\]\/\'\"]\:\)\(\;') # Add foreign languages here
+	p = re.compile(r'[\-\.\,\!\?\+\=\[\]\/\'\"\:\)\(\;\']')
 	data = p.sub(' ', data)
 	
 	# Remove all the stopwords and lowercase the data.

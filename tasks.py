@@ -44,8 +44,20 @@ def create_geo(locations):
 	logging.info('New locations have been added to the datastore: %s' % locations)
 
 def create_recent(recent):
+	
 	if recent:
 		r = Recent(screen_name=recent['screen_name'], profile_image_url=recent['profile_image_url'])
 		r.put()
 		
 		logging.info('Recent entry has been added to the datastore: %s' % recent['screen_name'])
+	
+	# Let's do this in batch since we don't want too much datastore API on every request.
+	recents = Recent.all()
+	count = recents.count()
+	if count > 80:
+		recents.order('published')
+		recents = recents.fetch(count - 40)
+		for recent in recents:
+			recent.delete()
+			
+		logging.info('Removing some recent entries, was > 80, now < 40')
