@@ -11,6 +11,14 @@ handlers:
   script: $PYTHON_LIB/google/appengine/ext/deferred/handler.py
   login: admin
 
+- url: /robots.txt
+  static_files: templates/static/robots.txt
+  upload: templates/static/robots.txt
+  
+- url: /favicon.ico
+  static_files: templates/static/images/favicon.ico
+  upload: templates/static/images/favicon.ico
+
 - url: /admin/.*
   script: main.py
   login: admin
@@ -22,5 +30,6 @@ builtins:
 - datastore_admin: on
 
 error_handlers:
+  - file: templates/default_error.html
   - error_code: over_quota
     file: templates/error_over_quota.html
