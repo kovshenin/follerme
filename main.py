@@ -351,12 +351,16 @@ class Profile(webapp.RequestHandler):
 		
 		# Let's see if it's outdated, give it 1 hour
 		if cache:
-			if cache.published + timedelta(seconds=1) < datetime.now():
+			if cache.published + timedelta(hours=1) < datetime.now():
 				outdated = True
 
 		# Return a tuple. Beware ;)
 		return (cache, outdated)
-		
+	
+	# Let's see if this fixes the problem.
+	def head(self, screen_name):
+		return
+			
 	# Our main bubble
 	def get(self, screen_name):
 		context = {'google_maps_key': google_maps_key, 'api_key': api_key}
@@ -373,7 +377,7 @@ class Profile(webapp.RequestHandler):
 			render(self, 'request.html', {'screen_name': screen_name})
 			return
 		else:
-			if outdated and 'Googlebot' not in user_agent:
+			if outdated and 'Googlebot' not in user_agent and 'Twitterbot' not in user_agent:
 				render(self, 'request.html', {'screen_name': screen_name})
 				return
 
