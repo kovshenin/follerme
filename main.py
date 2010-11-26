@@ -63,105 +63,60 @@ class Home(webapp.RequestHandler):
 # can be extended in the future.
 class Ajax(webapp.RequestHandler):
 	def post(self, action):
-		
-		# If the request action is called gmap, calculate the followers' locations
-		# and return them pointed out on a Google Map (via a template and javascript)
-		if action == 'gmap':
-			profile_name = self.request.get('profile', None)
-			if profile_name:
-				locations = {}
-				twitter = getTwitterObject()
-				followers = twitter.GetFollowers({'screen_name': profile_name})
-				
-				# Loop through each follower and add a location if it does not exist.
-				# Otherwise add the user to the list on an existing location. This way
-				# we're grouping followers from the same locations.
-				for follower in followers:
-					user = follower
-					if follower['location'] in locations:
-						locations[follower['location']]['users'].append(user)
-					else:
-						locations[follower['location']] = {'name': follower['location'], 'lat': 0, 'lon': 0, 'users': [user]}
-				
-				# Loop through all the locations and query the Datastore for their
-				# Geo points (latitude and longitude) which could be pointed out
-				# on the map.
-				new_locations = []
-				for location in locations.keys():
-					query = Geo.all()
-					query.filter('location =', location)
-					g = query.get()
-					
-					# We don't want empty locations, neither do we want locations
-					# recorded as None, which are temporary stored until the cron
-					# jobs resolves them into valid geo points.
-					if g:
-						if g.geo != 'None':
-							if g.geo != '0,0':
-								# If a location exists, we set its lat and lon values that are then manipulated
-								# via javascript and pointed out on the map.
-								locations[location]['lat'], locations[location]['lon'] = g.geo.split(',')
-							else:
-								# If the location's geo address is 0,0 we remove it from the locations list
-								# since we don't want to show irrelevant locations.
-								del locations[location]
-					
-					# If the query returned no results, we verify if the location is valid
-					# and add it to the Datastore with a value of None, for later processing
-					# by the cron jobs. We delete the location from the locations dict anyways
-					# since we don't have any lat,lon points to show off.
-					else:
-						if location:
-							clean_location = location.replace('\n', ' ').strip()
-							new_locations.append(clean_location)
-						del locations[location]
-
-				# Let's add tasks for new locations
-				if new_locations:
-					taskqueue.add(url='/admin/tasks/', params={'task': 'geo-create', 'locations': encoder.encode(new_locations)}, method='POST')
-				
-				render(self, 'map.html', {'locations': list(locations.values())})
-		
-		elif action == 'request':
-			profile_data = self.request.get('profile', '').split('&')
-			text_data = self.request.get('text', '')
-			followers_data = self.request.POST.getall('followers[]')
+		# An AJAX request to prepare a profile
+		if action == 'request':
 			screen_name = self.request.get('screen_name', '')
+			if not screen_name: return
 			
+			twitter = getTwitterObject()
 			try:
-				followers = []
-				for follower in followers_data:
-					attributes = {}
-					for attr in follower.split('&'):
-						k,v = attr.split('=')
-						
-						# Unquote
-						k = urllib.unquote_plus(str(k))
-						v = urllib.unquote_plus(str(v))
-						
-						# Javascript passes nulls as 'null'
-						if v == 'null':
-							v = None
-						attributes[k] = v
+				timeline = twitter.GetUserTimeline({'screen_name': screen_name, 'count': 100})
+			except urllib2.HTTPError, e:
+				# An HTTP error can occur during requests to the Twitter API.
+				# We handle such errors here and log them for later investigation.
+				error = {'title': 'Unknown Error', 'message': "We're sorry, but an unknown error has occoured.<br />We'll very be glad if you <a href='http://twitter.com/kovshenin'>report this</a>."}
+				if e.code == 401:
+					error['title'] = 'Profile Protected'
+					error['message'] = "It seems that @<strong>@%s</strong>'s tweets are protected.<br />Sorry, but there's nothing we can do at this point ;)" % screen_name
+				elif e.code == 404:
+					error['title'] = 'Profile Not Found'
+					error['message'] = 'It seems that @<strong>%s</strong> is not tweeting at all.<br />Perhaps you should try somebody else:' % screen_name
 
-					# Append the set of attributes to the followers list
-					followers.append(attributes)
+				# Log the error, render the template and return
+				logging.warning("Code %s: %s - " % (e.code, e.msg) + "Request was: %s" % screen_name)
 				
-				profile = {}
-				for p in profile_data:
-					k,v = p.split('=')
-					profile[str(k)] = urllib.unquote_plus(str(v))
-			
-			except:
-				clear_profile_cache(screen_name)
-				cache = Cache(name='profile:' + screen_name.lower(), value=encoder.encode({'error': True, 'screen_name': screen_name}))
-				cache.put()
-				
-				rendertext(self, encoder.encode({'status': 'OK'}))
+				# Remove old versions and put the cache
+				save_profile_cache(screen_name, {'error': error})
 				return
-					
+				
+			except urlfetch.DownloadError, e:
+				error = {'title': 'Overload Error', 'message': "We're sorry but it seems that we're overloaded.<br />Give us a few minutes and try again later."}
+				logging.warning("Download Error: %s" % e)
+
+				# Remove old versions and put the cache
+				save_profile_cache(screen_name, {'error': error})
+				return
+
+			followers = twitter.GetFollowers({'screen_name': screen_name})
+
+			try:	
+				profile = timeline[0]['user']
+			except IndexError, e:
+				# If timeline[0] is inaccessible then there were no tweets at all
+				error = {'title': 'Profile Empty', 'message': "There were no tweets by @<strong>%s</strong> at all.<br />Perhaps it's a newly created account, give them some time..." % screen_name}
+				logging.warning("Accessed an empty profile: %s" % screen_name)
+
+				# Remove old versions and put the cache
+				save_profile_cache(screen_name, {'error': error})
+				return
+			
+			data = ""
+			# Gather the data
+			for entry in timeline:
+				data += " %s" % entry['text']
+			
 			# Remove unwanted characters
-			data = clean_data(text_data)
+			data = clean_data(data)
 			
 			# The three dicts will hold our words and the number of times they've
 			# been used for later tag cloud generation.
@@ -189,17 +144,26 @@ class Ajax(webapp.RequestHandler):
 			# Otherwise add the user to the list on an existing location. This way
 			# we're grouping followers from the same locations.
 			for follower in followers:
-				location = str(follower['location']).decode('utf-8')
+				# Clean it up
+				location = follower['location']
+				if not location: continue
+				
+				location = location.replace('\n', ' ').strip()
+				
 				if location in locations:
 					locations[location]['users'].append(follower)
 				else:
 					locations[location] = {'name': location, 'lat': 0, 'lon': 0, 'users': [follower]}
-					
+
 			# Loop through all the locations and query the Datastore for their
 			# Geo points (latitude and longitude) which could be pointed out
 			# on the map.
 			new_locations = []
 			for location in locations.keys():
+				if not location:
+					del locations[location]
+					continue
+				
 				query = Geo.all()
 				query.filter('location =', location)
 				g = query.get()
@@ -210,13 +174,14 @@ class Ajax(webapp.RequestHandler):
 				if g:
 					if g.geo != 'None':
 						if g.geo != '0,0':
-							# If a location exists, we set its lat and lon values that are then manipulated
-							# via javascript and pointed out on the map.
+							# If a location exists, we set its lat and lon values.
 							locations[location]['lat'], locations[location]['lon'] = g.geo.split(',')
 						else:
 							# If the location's geo address is 0,0 we remove it from the locations list
 							# since we don't want to show irrelevant locations.
 							del locations[location]
+					else:
+						del locations[location]
 				
 				# If the query returned no results, we verify if the location is valid
 				# and add it to the Datastore with a value of None, for later processing
@@ -224,26 +189,22 @@ class Ajax(webapp.RequestHandler):
 				# since we don't have any lat,lon points to show off.
 				else:
 					if location:
-						clean_location = location.replace('\n', ' ').strip()
-						new_locations.append(clean_location)
+						new_locations.append(location)
 					del locations[location]
-
+					
 			# Let's add tasks for new locations
 			if new_locations:
-				taskqueue.add(url='/admin/tasks/', params={'task': 'geo-create', 'locations': encoder.encode(new_locations)}, method='POST')
+				deferred.defer(tasks.create_geo, new_locations, _countdown=1, _queue='geocreate')
+				
+			# Let's submit this as a recent query into the datastore (via a task)
+			deferred.defer(tasks.create_recent, {'screen_name': profile['screen_name'], 'profile_image_url': profile['profile_image_url']}, _countdown=1, _queue='recent')
 			
 			# Make this a list so that we could pass it on to the template afterwards
 			locations = list(locations.values())
 			
-			# Remove old versions
-			clear_profile_cache(profile['screen_name'])
-			
 			# Save the cache
-			cached_data = {'profile': profile, 'topics_cloud_html': get_cloud_html(topics), 'mentions_cloud_html': get_cloud_html(mentions, url="/%s"), 'hashtags_cloud_html': get_cloud_html(hashtags), 'locations': locations}
-			cache = Cache(name='profile:' + profile['screen_name'].lower(), value=encoder.encode(cached_data))
-			cache.put()
-			
-			rendertext(self, encoder.encode({'status': 'OK'}))
+			cache_data = {'profile': profile, 'topics_cloud_html': get_cloud_html(topics), 'mentions_cloud_html': get_cloud_html(mentions, url="/%s"), 'hashtags_cloud_html': get_cloud_html(hashtags), 'locations': locations}
+			save_profile_cache(screen_name, cache_data)
 			return
 
 # This simply redirects to our PB Wiki
@@ -380,7 +341,6 @@ class API(webapp.RequestHandler):
 # Perhaps the most complex view. This is the profile view with the topics, hashtags
 # and mentions clouds, user data and the followers geography.
 class Profile(webapp.RequestHandler):
-	
 	# Use this function to catch a cached profile
 	def get_cached_profile(self, screen_name):
 		cache = Cache.all()
@@ -389,9 +349,9 @@ class Profile(webapp.RequestHandler):
 		
 		outdated = False
 		
-		# Let's see if it's outdated, give it 30 seconds
+		# Let's see if it's outdated, give it 1 hour
 		if cache:
-			if cache.published + timedelta(seconds=30) < datetime.now():
+			if cache.published + timedelta(hours=1) < datetime.now():
 				outdated = True
 
 		# Return a tuple. Beware ;)
@@ -422,10 +382,7 @@ class Profile(webapp.RequestHandler):
 			del cached
 			
 			if 'error' in cached_values:
-				error = {'title': "Something's Wrong", 'message': "We're so sorry, but it seems that something went wrong.<br /><strong>@%s</strong> doesn't exist, is protected or has no tweets at all." % screen_name}			
-				logging.error("Something went wrong... via Javascript")
-
-				render(self, 'error.html', {'error': error})
+				render(self, 'error.html', {'error': cached_values['error']})
 				return
 			
 			# Combine the cached values with the context and get rid of cached values
@@ -439,10 +396,8 @@ class Profile(webapp.RequestHandler):
 			# Let's get a list of 40 recent queries
 			recents = get_recent_queries()
 			context['recents'] = recents
+			del recents
 						
-			# Let's submit this as a recent query into the datastore (via a task)
-			taskqueue.add(url='/admin/tasks/', params={'task': 'recent-create', 'recent': encoder.encode({'screen_name': profile['screen_name'], 'profile_image_url': profile['profile_image_url']})}, method='POST')
-			
 			render(self, "profile.html", context)
 			return
 
@@ -505,70 +460,7 @@ class About(webapp.RequestHandler):
 # and verification are handled here.
 class Admin(webapp.RequestHandler):
 	def post(self, action):
-		
-		# Tasks workers, stuff that is actually executed by the Task Queue API
-		if action == 'tasks':
-			
-			# Create new entries into the Geo entity in the datastore. Moved here
-			# to take load off the gmaps AJAX request.
-			if self.request.get('task') == 'geo-create':
-				locations = decoder.decode(self.request.get('locations', '[]'))
-				
-				for location in locations:
-					geo = Geo(location=location, geo='None')
-					geo.put()
-				
-				logging.info('New locations have been added to the datastore: %s' % locations)
-				rendertext(self, 'New locations have been added to the datastore')
-				
-			# Create an entry to the Recents entity in the datastore, we moved this here
-			# to take load off the profile request page.
-			if self.request.get('task') == 'recent-create':
-				recent = decoder.decode(self.request.get('recent'))
-				if recent:
-					r = Recent(screen_name=recent['screen_name'], profile_image_url=recent['profile_image_url'])
-					r.put()
-					
-					logging.info('Recent entry has been added to the datastore: %s' % recent['screen_name'])
-					
-				rendertext(self, 'Recent entry have been processed')
-				
-			# Parse existing Geo entities with None as lat, lon, try to
-			# geocode them from Google Maps API
-			elif self.request.get('task') == 'geocode':
-				query = Geo.all()
-				query.filter('geo =', 'None')
-				results = query.fetch(1)
-				for result in results:
-					try:
-						# If the location format is already a Geo string
-						lat, lon = result.location.split(",")
-						lat = float(lat)
-						lon = float(lon)
-						result.geo = "%s,%s" % (lat, lon)
-						result.put()
-						break
-					except:
-						pass
-					
-					# Prepare and fire a request to the Google Maps API
-					form_fields = {'q': result.location.encode('utf-8'), 'output': 'csv', 'key': 'ABQIAAAAXG5dungCtctVf8ll0MRanhR9iirwL7nBc9d2R7_tFiOfa5aC4RSTKOF-7Bi7s8MaO5KAlewwElCpIA'}
-					form_data = urllib.urlencode(form_fields)
-					
-					google_maps = urlfetch.fetch(url='http://maps.google.com/maps/geo?' + form_data)
-					if google_maps.status_code == 200 and len(google_maps.content):
-						try:
-							# Parse and record the result if it's valid
-							status, n, lat, lon = google_maps.content.split(',')
-							result.geo = "%s,%s" % (lat, lon)
-							result.put()
-						except:
-							pass
-					
-					# Google Maps doesn't like too many requests
-					#time.sleep(1)
-
-				rendertext(self, "Geo locations job complete")
+		pass
 
 	def get(self, action):
 		# Depending on the action requested /admin/<action>/
@@ -635,9 +527,6 @@ class Admin(webapp.RequestHandler):
 		# Uses the Task Queues API
 		elif action == 'cron':
 			if self.request.get('task') == 'geocode':
-				#def geocode_queue_add():
-				#	taskqueue.add(queue_name='geocoding', url='/admin/tasks/', params={'task': 'geocode'}, method='POST')
-					
 				for i in range(2, 100, 2):
 					deferred.defer(tasks.geocode, _countdown=i, _queue='geocoding')
 				
@@ -748,6 +637,11 @@ def clear_profile_cache(screen_name):
 	q.filter('name =', 'profile:' + screen_name.lower())
 	for c in q:
 		c.delete()
+
+def save_profile_cache(screen_name, cache_data):
+	clear_profile_cache(screen_name)
+	cache = Cache(name='profile:' + screen_name.lower(), value=encoder.encode(cache_data))
+	cache.put()
 
 # Accessible URLs, others in app.yaml
 

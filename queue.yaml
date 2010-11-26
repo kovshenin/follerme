@@ -4,3 +4,7 @@ queue:
 - name: geocoding
   rate: 0.5/s
   bucket_size: 1
+- name: recent
+  rate: 0.5/s
+- name: geocreate
+  rate: 0.5/s

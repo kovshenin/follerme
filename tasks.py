@@ -2,7 +2,7 @@ import urllib, urllib2
 
 from google.appengine.api import urlfetch
 
-from models import Geo
+from models import Geo, Recent
 import logging
 
 def geocode():
@@ -34,3 +34,18 @@ def geocode():
 				result.put()
 			except:
 				pass
+
+def create_geo(locations):
+	# Create new entries into the Geo entity in the datastore.
+	for location in locations:
+		geo = Geo(location=location, geo='None')
+		geo.put()
+	
+	logging.info('New locations have been added to the datastore: %s' % locations)
+
+def create_recent(recent):
+	if recent:
+		r = Recent(screen_name=recent['screen_name'], profile_image_url=recent['profile_image_url'])
+		r.put()
+		
+		logging.info('Recent entry has been added to the datastore: %s' % recent['screen_name'])
