@@ -54,7 +54,10 @@ class Home(webapp.RequestHandler):
 		if profile_name:
 			if '@' in profile_name:
 				profile_name = profile_name.replace('@', '')
-			self.redirect(profile_name.lower())
+			try:
+				self.redirect(profile_name.lower())
+			except:
+				self.redirect('/')
 		else:
 			self.redirect('/')
 
@@ -510,7 +513,7 @@ class Admin(webapp.RequestHandler):
 		# Uses the Task Queues API
 		elif action == 'cron':
 			if self.request.get('task') == 'geocode':
-				for i in range(2, 100, 2):
+				for i in range(2, 140, 2):
 					deferred.defer(tasks.geocode, _countdown=i, _queue='geocoding')
 				
 				rendertext(self, "Geo task added to queue")
