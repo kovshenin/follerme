@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 
 {% block title %}{{ profile.name }} (@{{profile.screen_name}}) Twitter Analytics on Foller.me{% endblock %}
-
+{% block meta %}
+	<link rel="canonical" href="http://www.foller.me/{{ profile.screen_name|lower }}" />
+{% endblock %}
 {% block scripts %}
 	<script src="http://platform.twitter.com/anywhere.js?id={{ api_key }}&v=1" type="text/javascript"></script>
 	<script src="http://maps.google.com/maps?file=api&amp;v=2&amp;key={{ google_maps_key }}"></script>

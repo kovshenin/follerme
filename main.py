@@ -54,7 +54,7 @@ class Home(webapp.RequestHandler):
 		if profile_name:
 			if '@' in profile_name:
 				profile_name = profile_name.replace('@', '')
-			self.redirect(profile_name)
+			self.redirect(profile_name.lower())
 		else:
 			self.redirect('/')
 
@@ -68,7 +68,16 @@ class Ajax(webapp.RequestHandler):
 			screen_name = self.request.get('screen_name', '')
 			if not screen_name: return
 			
-			twitter = getTwitterObject()
+			try:
+				twitter = getTwitterObject()
+			except AttributeError, e:
+				error = {'title': 'Overload Error', 'message': "We're sorry but it seems that we're overloaded.<br />Give us a few minutes and try again later."}
+				logging.critical("It seems that OAuth tokens are missing! Alert!")
+
+				# Remove old versions and put the cache
+				save_profile_cache(screen_name, {'error': error})
+				return
+
 			try:
 				timeline = twitter.GetUserTimeline({'screen_name': screen_name, 'count': 100})
 			except urllib2.HTTPError, e:
@@ -386,6 +395,7 @@ class Profile(webapp.RequestHandler):
 			del cached
 			
 			if 'error' in cached_values:
+				clear_profile_cache(screen_name)
 				render(self, 'error.html', {'error': cached_values['error']})
 				return
 			
@@ -404,54 +414,6 @@ class Profile(webapp.RequestHandler):
 						
 			render(self, "profile.html", context)
 			return
-
-		""" Error handling
-		# Create a Twitter OAuth object.
-		try:
-			twitter = getTwitterObject()
-		except AttributeError, e:
-			# Something went wrong, perhaps the OAuth tokens expired or have been removed
-			# from the datastore.
-			error = {'title': "Something's Broken", 'message': "We're so sorry, but it seems that Foller.me is down.<br />We'll deal with this issue as soon as possible"}			
-			logging.critical("Cannot create a Twitter OAuth object. Lacking tokens?")
-			
-			render(self, 'error.html', {'error': error})
-			return
-
-		# Fire a /statuses/user_timeline request, record parse the first entry for the user
-		# details.
-		try:
-			timeline = twitter.GetUserTimeline({'screen_name': profile_name, 'count': 100})
-		except urllib2.HTTPError, e:
-			# An HTTP error can occur during requests to the Twitter API.
-			# We handle such errors here and log them for later investigation.
-			error = {'title': 'Unknown Error', 'message': "We're sorry, but an unknown error has occoured.<br />We'll very be glad if you <a href='http://twitter.com/kovshenin'>report this</a>."}
-			if e.code == 401:
-				error['title'] = 'Profile Protected'
-				error['message'] = "It seems that @<strong>@%s</strong>'s tweets are protected.<br />Sorry, but there's nothing we can do at this point ;)" % profile_name
-			elif e.code == 404:
-				error['title'] = 'Profile Not Found'
-				error['message'] = 'It seems that @<strong>%s</strong> is not tweeting at all.<br />Perhaps you should try somebody else:' % profile_name
-			
-			# Log the error, render the template and return
-			logging.warning("Code %s: %s - " % (e.code, e.msg) + "Request was: %s" % profile_name)
-			render(self, 'error.html', {'error': error})
-			return
-		except urlfetch.DownloadError, e:
-			error = {'title': 'Overload Error', 'message': "We're sorry but it seems that we're overloaded.<br />Give us a few minutes and try again later."}
-			logging.warning("Download Error: %s" % e)
-			render(self, 'error.html', {'error': error})
-			return
-		
-		try:	
-			profile = timeline[0]['user']
-		except IndexError, e:
-			# If timeline[0] is inaccessible then there were no tweets at all
-			error = {'title': 'Profile Empty', 'message': "There were no tweets by @<strong>%s</strong> at all.<br />Perhaps it's a newly created account, give them some time..." % profile_name}
-			logging.warning("Accessed an empty profile: %s" % profile_name)
-			render(self, 'error.html', {'error': error})
-			return
-		"""
 		
 
 # Used to render the about page
@@ -485,7 +447,8 @@ class Admin(webapp.RequestHandler):
 			twitter = OAuthApi(consumer_key, consumer_secret)
 			credentials = twitter.getRequestToken()
 			url = twitter.getAuthorizationURL(credentials)
-			self.response.out.write('<a href="%s">%s</a>' % (url, url))
+			rendertext(self, '<a href="%s">%s</a><br />' % (url, url))
+			rendertext(self, '<form action="/admin/verify/" method="GET"><input type="text" name="oauth_verifier" /><input type="submit" /></form>')
 			
 			# Save the tokens to the datastore for later authentication
 			oauth_token = credentials['oauth_token']
