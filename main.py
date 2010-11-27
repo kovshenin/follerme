@@ -110,6 +110,14 @@ class Ajax(webapp.RequestHandler):
 
 			try:	
 				profile = timeline[0]['user']
+				
+				# Clean up the profile, we don't want too much data
+				fields = ['screen_name', 'name', 'profile_image_url', 'created_at', 'followers_count', 'friends_count', 'statuses_count', 'url', 'description']
+				new_profile = {}
+				for field in fields:
+					new_profile[field] = profile[field]
+				
+				profile = new_profile
 			except IndexError, e:
 				# If timeline[0] is inaccessible then there were no tweets at all
 				error = {'title': 'Profile Empty', 'message': "There were no tweets by @<strong>%s</strong> at all.<br />Perhaps it's a newly created account, give them some time..." % screen_name}
@@ -147,7 +155,6 @@ class Ajax(webapp.RequestHandler):
 				else:
 					d[word] = 1
 			
-			
 			locations = {}
 			# Loop through each follower and add a location if it does not exist.
 			# Otherwise add the user to the list on an existing location. This way
@@ -155,10 +162,11 @@ class Ajax(webapp.RequestHandler):
 			for follower in followers:
 				# Clean it up
 				location = follower['location']
+				# Clean up the follower data, we don't want to store too much
+				follower = {'screen_name': follower['screen_name'], 'profile_image_url': follower['profile_image_url']}
 				if not location: continue
 				
 				location = location.replace('\n', ' ').strip()
-				
 				if location in locations:
 					locations[location]['users'].append(follower)
 				else:
@@ -212,7 +220,7 @@ class Ajax(webapp.RequestHandler):
 			locations = list(locations.values())
 			
 			# Save the cache
-			cache_data = {'profile': profile, 'topics_cloud_html': get_cloud_html(topics), 'mentions_cloud_html': get_cloud_html(mentions, url="/%s"), 'hashtags_cloud_html': get_cloud_html(hashtags), 'locations': locations}
+			cache_data = {'profile': profile, 'topics_data': topics, 'mentions_data': mentions, 'hashtags_data': hashtags, 'locations': locations}
 			save_profile_cache(screen_name, cache_data)
 			return
 
@@ -405,6 +413,14 @@ class Profile(webapp.RequestHandler):
 			
 			# Parse the created date, since we wanna pass a datetime object to the template.
 			context['profile']['created_at'] = datetime.strptime(context['profile']['created_at'], "%a %b %d %H:%M:%S +0000 %Y")
+			context['topics_cloud_html'] = get_cloud_html(context['topics_data'])
+			context['mentions_cloud_html'] = get_cloud_html(context['mentions_data'], url='/%s')
+			context['hashtags_cloud_html'] = get_cloud_html(context['hashtags_data'])
+			
+			del context['topics_data']
+			del context['mentions_data']
+			del context['hashtags_data']
+			
 			profile = context['profile']
 			
 			# Let's get a list of 40 recent queries
