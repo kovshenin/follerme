@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}{{ profile.name }} (@{{profile.screen_name}}) Twitter Analytics on Foller.me{% endblock %}
+{% block meta_description %}{{ profile.description|truncatewords:20 }}{% endblock %}
 {% block meta %}
 	<link rel="canonical" href="http://www.foller.me/{{ profile.screen_name|lower }}" />
 {% endblock %}
