@@ -388,6 +388,7 @@ class Profile(webapp.RequestHandler):
 		# Tuple returned from get_cached_profile. Grab the user agent.
 		cached, outdated = self.get_cached_profile(screen_name)
 		user_agent = self.request.headers.get('User-Agent', None)
+		user_agent = user_agent.lower()
 		
 		# If the profile is not cached, render the request screen (js work).
 		# If it is cached but outdated, go with the same request screen, but
@@ -397,7 +398,7 @@ class Profile(webapp.RequestHandler):
 			render(self, 'request.html', {'screen_name': screen_name})
 			return
 		else:
-			if outdated and 'Googlebot' not in user_agent and 'Twitterbot' not in user_agent:
+			if outdated and 'googlebot' not in user_agent and 'twitterbot' not in user_agent and 'slurp' not in user_agent and 'msnbot' not in user_agent:
 				render(self, 'request.html', {'screen_name': screen_name})
 				return
 
