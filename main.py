@@ -40,6 +40,10 @@ google_maps_key = 'ABQIAAAAXG5dungCtctVf8ll0MRanhS8x33voUDc7NMITWhA0MX8qZ_M_hTQt
 # The home screen, nothing extra-ordinary, we just render
 # the template with an empty context.
 class Home(webapp.RequestHandler):
+	# Feedburner and other crawlers that request HEAD
+	def head(self):
+		return
+	
 	def get(self):
 		context = {}
 		render(self, 'home.html', context)
