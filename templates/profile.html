@@ -204,7 +204,7 @@
 			<span class="right">
 				<ul>
 					<li><a href="/about">About Foller.me</a></li>
-					<li><a href="http://twitter.com/follerme">Developer's Blog</a></li>
+					<li><a href="http://feedback.foller.me">Feedback</a></li>
 					<li><a href="http://api.foller.me">Foller.me API</a></li>
 				</ul>
 			</span>
@@ -217,13 +217,23 @@
 		document.write(unescape("%3Cscript src='" + asset_host + "javascripts/feedback-v2.js' type='text/javascript'%3E%3C/script%3E"));
 	</script>
 
-	<script type="text/javascript" charset="utf-8">
-		var feedback_widget_options = {};
-		feedback_widget_options.display = "overlay";  
-		feedback_widget_options.company = "follerme";
-		feedback_widget_options.placement = "right";
-		feedback_widget_options.color = "#1A74B6";
-		feedback_widget_options.style = "idea";
-		var feedback_widget = new GSFN.feedback_widget(feedback_widget_options);
+	<script type='text/javascript'>
+
+	var _ues = {
+		host:'feedback.foller.me',
+		forum:'1481',
+		lang:'en',
+		tab_alignment:'right',
+		tab_text_color:'white',
+		tab_bg_color:'#1A74B6',
+		tab_hover_color:'#1B7ABF'
+	};
+
+	(function() {
+		var _ue = document.createElement('script'); _ue.type = 'text/javascript'; _ue.async = true;
+		_ue.src = ('https:' == document.location.protocol ? 'https://s3.amazonaws.com/' : 'http://') + 'cdn.userecho.com/js/widget-1.4.gz.js';
+		var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(_ue, s);
+	  })();
+
 	</script>
 {% endblock %}

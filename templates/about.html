@@ -1,7 +1,11 @@
 {% extends "base.html" %}
 
 {% block title %}About Foller.me{% endblock %}
-
+{% block meta %}
+	<link rel="canonical" href="http://www.foller.me/about" />
+{% endblock %}
+{% block meta_description %}Foller.me is a web application based on the Twitter API, used to gather Twitter analytics from any profile – in seconds! Foller.me scans your Twitter profile, parses your latest tweets and followers.{% endblock %}
+{% block meta_keywords %}twitter analytics, profile statistics, geography, geo{% endblock %}
 {% block body %}
 	<div class="about">
 		<form method="POST" action="/">
