@@ -93,7 +93,7 @@ class Ajax(webapp.RequestHandler):
 				error = {'title': 'Unknown Error', 'message': "We're sorry, but an unknown error has occoured.<br />We'll very be glad if you <a href='http://twitter.com/kovshenin'>report this</a>."}
 				if e.code == 401:
 					error['title'] = 'Profile Protected'
-					error['message'] = "It seems that @<strong>@%s</strong>'s tweets are protected.<br />Sorry, but there's nothing we can do at this point ;)" % screen_name
+					error['message'] = "It seems that @<strong>%s</strong>'s tweets are protected.<br />Sorry, but there's nothing we can do at this point ;)" % screen_name
 				elif e.code == 404:
 					error['title'] = 'Profile Not Found'
 					error['message'] = 'It seems that @<strong>%s</strong> is not tweeting at all.<br />Perhaps you should try somebody else:' % screen_name
