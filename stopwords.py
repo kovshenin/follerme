@@ -130,3 +130,13 @@ stopwords = ("a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n
 		"womit", "woraufhin", "woraus", "worin", "wurde", "wurden", "währenddessen", "wär", "wäre", "wären", "zahlreich", "", "zehn", "zeitweise", "ziehen", "zieht", "zog", "zogen", 
 		"zudem", "zuerst", "zufolge", "zugleich", "zuletzt", "zumal", "zurück", "zusammen", "zuviel", "zwanzig", "zwei", "zwölf", "ähnlich", "übel", "überall", "überallhin", "überdies", 
 		"übermorgen", "übrig", "übrigens")
+
+# Remove stopwords (list in stopwords.py)
+def remove_stopwords(text):
+	words = text.split()
+	clean = []
+	for word in words:
+		if not word.isdigit() and not word.lower().encode("utf-8") in stopwords and not len(word) < 2:
+			clean.append(word)
+			
+	return ' '.join(clean)

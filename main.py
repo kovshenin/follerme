@@ -26,6 +26,7 @@ import simplejson.decoder
 
 from models import Geo, Recent, Option, Cache
 import tasks
+from stopwords import remove_stopwords
 
 # These two objects can be used globally
 encoder = simplejson.encoder.JSONEncoder()
@@ -544,17 +545,6 @@ def getTwitterObject():
 
 	twitter = OAuthApi(consumer_key, consumer_secret, access_token.value, access_token_secret.value)
 	return twitter
-	
-# Remove stopwords (list in stopwords.py)
-def remove_stopwords(text):
-	from stopwords import stopwords
-	words = text.split()
-	clean = []
-	for word in words:
-		if not word.isdigit() and not word.lower().encode("utf-8") in stopwords and not len(word) < 2:
-			clean.append(word)
-			
-	return ' '.join(clean)
 
 # Render a cloud based on a words dictionary. There seems to be some
 # magic going on here, have to revise and probably rewrite for easier
