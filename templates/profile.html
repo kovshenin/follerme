@@ -165,7 +165,7 @@
 								</div>
 								<div style="float: left; width: 200px; margin-left: 10px;">
 									<p style="margin-top: 2px; margin-bottom: 8px;">Click on the button below to<br />follow @{{ profile.screen_name }} right now:</p>
-									<span id="follow-button"><noscript><a href="http://twitter.com/{{ profile.screen_name }}">Follow @{{ profile.screen_name }} on Twitter</a></noscript></span>
+									<span id="follow-button"><noscript><a rel="me external" href="http://twitter.com/{{ profile.screen_name }}">Follow @{{ profile.screen_name }} on Twitter</a></noscript></span>
 									<script>
 										jQuery(document).ready(function() {
 											twttr.anywhere(function (T) {

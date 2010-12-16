@@ -423,7 +423,7 @@ class Profile(webapp.RequestHandler):
 			# Parse the created date, since we wanna pass a datetime object to the template.
 			context['profile']['created_at'] = datetime.strptime(context['profile']['created_at'], "%a %b %d %H:%M:%S +0000 %Y")
 			context['topics_cloud_html'] = get_cloud_html(context['topics_data'])
-			context['mentions_cloud_html'] = get_cloud_html(context['mentions_data'], url='/%s')
+			context['mentions_cloud_html'] = get_cloud_html(context['mentions_data'], url='/%s', xfn='friend')
 			context['hashtags_cloud_html'] = get_cloud_html(context['hashtags_data'])
 			
 			del context['topics_data']
@@ -549,7 +549,7 @@ def getTwitterObject():
 # Render a cloud based on a words dictionary. There seems to be some
 # magic going on here, have to revise and probably rewrite for easier
 # to understand and more elegant output.
-def get_cloud_html(words, url="http://search.twitter.com/search?q=%s", min_font_size=12, max_font_size=30):
+def get_cloud_html(words, url="http://search.twitter.com/search?q=%s", min_font_size=12, max_font_size=30, xfn=""):
 	try:
 		maximum = max(words.values())
 		minimum = min(words.values())
@@ -577,7 +577,7 @@ def get_cloud_html(words, url="http://search.twitter.com/search?q=%s", min_font_
 		if c > (min_output - 2):
 			size = min_font_size + ((c - minimum) * step)
 			word_url = word.replace('@', '').replace('#', '')
-			rel = "external nofollow" if url.startswith('http://') else ''
+			rel = "%s external nofollow" % xfn if url.startswith('http://') else '%s' % xfn
 			result.append('<a rel="%(rel)s" style="font-size: %(size)spx" class="tag_cloud" href="%(url)s" title="\'%(word)s\' has been used %(count)s times">%(word)s</a>' % {'size': int(size), 'word': word, 'url': url % word_url, 'count': c, 'rel': rel})
 			
 	return ' '.join(result)
