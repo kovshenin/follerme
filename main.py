@@ -74,162 +74,7 @@ class Ajax(webapp.RequestHandler):
 		# An AJAX request to prepare a profile
 		if action == 'request':
 			screen_name = self.request.get('screen_name', '')
-			if not screen_name: return
-			
-			try:
-				twitter = getTwitterObject()
-			except AttributeError, e:
-				error = {'title': 'Overload Error', 'message': "We're sorry but it seems that we're overloaded.<br />Give us a few minutes and try again later."}
-				logging.critical("It seems that OAuth tokens are missing! Alert!")
-
-				# Remove old versions and put the cache
-				save_profile_cache(screen_name, {'error': error})
-				return
-
-			try:
-				timeline = twitter.GetUserTimeline({'screen_name': screen_name, 'count': 100})
-			except urllib2.HTTPError, e:
-				# An HTTP error can occur during requests to the Twitter API.
-				# We handle such errors here and log them for later investigation.
-				error = {'title': 'Unknown Error', 'message': "We're sorry, but an unknown error has occoured.<br />We'll very be glad if you <a href='http://twitter.com/kovshenin'>report this</a>."}
-				if e.code == 401:
-					error['title'] = 'Profile Protected'
-					error['message'] = "It seems that @<strong>%s</strong>'s tweets are protected.<br />Sorry, but there's nothing we can do at this point ;)" % screen_name
-				elif e.code == 404:
-					error['title'] = 'Profile Not Found'
-					error['message'] = 'It seems that @<strong>%s</strong> is not tweeting at all.<br />Perhaps you should try somebody else:' % screen_name
-
-				# Log the error, render the template and return
-				logging.warning("Code %s: %s - " % (e.code, e.msg) + "Request was: %s" % screen_name)
-				
-				# Remove old versions and put the cache
-				save_profile_cache(screen_name, {'error': error})
-				return
-				
-			except urlfetch.DownloadError, e:
-				error = {'title': 'Overload Error', 'message': "We're sorry but it seems that we're overloaded.<br />Give us a few minutes and try again later."}
-				logging.warning("Download Error: %s" % e)
-
-				# Remove old versions and put the cache
-				save_profile_cache(screen_name, {'error': error})
-				return
-
-			followers = twitter.GetFollowers({'screen_name': screen_name})
-
-			try:	
-				profile = timeline[0]['user']
-				
-				# Clean up the profile, we don't want too much data
-				fields = ['screen_name', 'name', 'profile_image_url', 'created_at', 'followers_count', 'friends_count', 'statuses_count', 'url', 'description']
-				new_profile = {}
-				for field in fields:
-					new_profile[field] = profile[field]
-				
-				profile = new_profile
-			except IndexError, e:
-				# If timeline[0] is inaccessible then there were no tweets at all
-				error = {'title': 'Profile Empty', 'message': "There were no tweets by @<strong>%s</strong> at all.<br />Perhaps it's a newly created account, give them some time..." % screen_name}
-				logging.warning("Accessed an empty profile: %s" % screen_name)
-
-				# Remove old versions and put the cache
-				save_profile_cache(screen_name, {'error': error})
-				return
-			
-			data = ""
-			# Gather the data
-			for entry in timeline:
-				data += " %s" % entry['text']
-			
-			# Remove unwanted characters
-			data = clean_data(data)
-			
-			# The three dicts will hold our words and the number of times they've
-			# been used for later tag cloud generation.
-			topics = {}
-			mentions = {}
-			hashtags = {}
-			
-			# Loop through all the words, separate them into topics, hashtags and mentions.
-			for word in data.split():
-				if word.startswith('@'):
-					d = mentions
-				elif word.startswith('#'):
-					d = hashtags
-				else:
-					d = topics
-					
-				if word in d:
-					d[word] += 1
-				else:
-					d[word] = 1
-			
-			locations = {}
-			# Loop through each follower and add a location if it does not exist.
-			# Otherwise add the user to the list on an existing location. This way
-			# we're grouping followers from the same locations.
-			for follower in followers:
-				# Clean it up
-				location = follower['location']
-				# Clean up the follower data, we don't want to store too much
-				follower = {'screen_name': follower['screen_name'], 'profile_image_url': follower['profile_image_url']}
-				if not location: continue
-				
-				location = location.replace('\n', ' ').strip()
-				if location in locations:
-					locations[location]['users'].append(follower)
-				else:
-					locations[location] = {'name': location, 'lat': 0, 'lon': 0, 'users': [follower]}
-
-			# Loop through all the locations and query the Datastore for their
-			# Geo points (latitude and longitude) which could be pointed out
-			# on the map.
-			new_locations = []
-			for location in locations.keys():
-				if not location:
-					del locations[location]
-					continue
-				
-				query = Geo.all()
-				query.filter('location =', location)
-				g = query.get()
-				
-				# We don't want empty locations, neither do we want locations
-				# recorded as None, which are temporary stored until the cron
-				# jobs resolves them into valid geo points.
-				if g:
-					if g.geo != 'None':
-						if g.geo != '0,0':
-							# If a location exists, we set its lat and lon values.
-							locations[location]['lat'], locations[location]['lon'] = g.geo.split(',')
-						else:
-							# If the location's geo address is 0,0 we remove it from the locations list
-							# since we don't want to show irrelevant locations.
-							del locations[location]
-					else:
-						del locations[location]
-				
-				# If the query returned no results, we verify if the location is valid
-				# and add it to the Datastore with a value of None, for later processing
-				# by the cron jobs. We delete the location from the locations dict anyways
-				# since we don't have any lat,lon points to show off.
-				else:
-					if location:
-						new_locations.append(location)
-					del locations[location]
-					
-			# Let's add tasks for new locations
-			if new_locations:
-				deferred.defer(tasks.create_geo, new_locations, _countdown=1, _queue='geocreate')
-				
-			# Let's submit this as a recent query into the datastore (via a task)
-			deferred.defer(tasks.create_recent, {'screen_name': profile['screen_name'], 'profile_image_url': profile['profile_image_url']}, _countdown=1, _queue='recent')
-			
-			# Make this a list so that we could pass it on to the template afterwards
-			locations = list(locations.values())
-			
-			# Save the cache
-			cache_data = {'profile': profile, 'topics_data': topics, 'mentions_data': mentions, 'hashtags_data': hashtags, 'locations': locations}
-			save_profile_cache(screen_name, cache_data)
+			collect_data(screen_name)
 			return
 
 # This simply redirects to our PB Wiki
@@ -399,14 +244,21 @@ class Profile(webapp.RequestHandler):
 		# If it is cached but outdated, go with the same request screen, but
 		# if it's outdated and Googlebot came around, we show him the outdated version.
 		
-		if not cached:
+		context['from_cache'] = bool(cached)
+		context['cache_outdated'] = bool(outdated)
+		context['bot'] = is_bot(user_agent)
+		
+		if not cached and not is_bot(user_agent):
 			render(self, 'request.html', {'screen_name': screen_name})
 			return
 		else:
-			if outdated and 'googlebot' not in user_agent and 'twitterbot' not in user_agent and 'slurp' not in user_agent and 'msnbot' not in user_agent:
+			if (not cached or outdated) and not is_bot(user_agent):
 				render(self, 'request.html', {'screen_name': screen_name})
 				return
-
+			else:
+				collect_data(screen_name)
+				cached, outdated = self.get_cached_profile(screen_name)
+			
 			# Cached values are json encoded, decode and get rid of the cached object
 			cached_values = decoder.decode(cached.value)
 			del cached
@@ -439,7 +291,15 @@ class Profile(webapp.RequestHandler):
 						
 			render(self, "profile.html", context)
 			return
-		
+
+# Check the user agent string against popular robots and crawlers.
+def is_bot(user_agent):
+	bots = ['googlebot', 'twitterbot', 'slurp', 'msnbot']
+	for bot in bots:
+		if bot in user_agent:
+			return True
+			
+	return False
 
 # Used to render the about page
 class About(webapp.RequestHandler):
@@ -623,6 +483,165 @@ def save_profile_cache(screen_name, cache_data):
 	clear_profile_cache(screen_name)
 	cache = Cache(name='profile:' + screen_name.lower(), value=encoder.encode(cache_data))
 	cache.put()
+	
+def collect_data(screen_name):
+	if not screen_name: return
+	
+	try:
+		twitter = getTwitterObject()
+	except AttributeError, e:
+		error = {'title': 'Overload Error', 'message': "We're sorry but it seems that we're overloaded.<br />Give us a few minutes and try again later."}
+		logging.critical("It seems that OAuth tokens are missing! Alert!")
+
+		# Remove old versions and put the cache
+		save_profile_cache(screen_name, {'error': error})
+		return
+
+	try:
+		timeline = twitter.GetUserTimeline({'screen_name': screen_name, 'count': 100})
+	except urllib2.HTTPError, e:
+		# An HTTP error can occur during requests to the Twitter API.
+		# We handle such errors here and log them for later investigation.
+		error = {'title': 'Unknown Error', 'message': "We're sorry, but an unknown error has occoured.<br />We'll very be glad if you <a href='http://twitter.com/kovshenin'>report this</a>."}
+		if e.code == 401:
+			error['title'] = 'Profile Protected'
+			error['message'] = "It seems that @<strong>%s</strong>'s tweets are protected.<br />Sorry, but there's nothing we can do at this point ;)" % screen_name
+		elif e.code == 404:
+			error['title'] = 'Profile Not Found'
+			error['message'] = 'It seems that @<strong>%s</strong> is not tweeting at all.<br />Perhaps you should try somebody else:' % screen_name
+
+		# Log the error, render the template and return
+		logging.warning("Code %s: %s - " % (e.code, e.msg) + "Request was: %s" % screen_name)
+		
+		# Remove old versions and put the cache
+		save_profile_cache(screen_name, {'error': error})
+		return
+		
+	except urlfetch.DownloadError, e:
+		error = {'title': 'Overload Error', 'message': "We're sorry but it seems that we're overloaded.<br />Give us a few minutes and try again later."}
+		logging.warning("Download Error: %s" % e)
+
+		# Remove old versions and put the cache
+		save_profile_cache(screen_name, {'error': error})
+		return
+
+	followers = twitter.GetFollowers({'screen_name': screen_name})
+
+	try:	
+		profile = timeline[0]['user']
+		
+		# Clean up the profile, we don't want too much data
+		fields = ['screen_name', 'name', 'profile_image_url', 'created_at', 'followers_count', 'friends_count', 'statuses_count', 'url', 'description']
+		new_profile = {}
+		for field in fields:
+			new_profile[field] = profile[field]
+		
+		profile = new_profile
+	except IndexError, e:
+		# If timeline[0] is inaccessible then there were no tweets at all
+		error = {'title': 'Profile Empty', 'message': "There were no tweets by @<strong>%s</strong> at all.<br />Perhaps it's a newly created account, give them some time..." % screen_name}
+		logging.warning("Accessed an empty profile: %s" % screen_name)
+
+		# Remove old versions and put the cache
+		save_profile_cache(screen_name, {'error': error})
+		return
+	
+	data = ""
+	# Gather the data
+	for entry in timeline:
+		data += " %s" % entry['text']
+	
+	# Remove unwanted characters
+	data = clean_data(data)
+	
+	# The three dicts will hold our words and the number of times they've
+	# been used for later tag cloud generation.
+	topics = {}
+	mentions = {}
+	hashtags = {}
+	
+	# Loop through all the words, separate them into topics, hashtags and mentions.
+	for word in data.split():
+		if word.startswith('@'):
+			d = mentions
+		elif word.startswith('#'):
+			d = hashtags
+		else:
+			d = topics
+			
+		if word in d:
+			d[word] += 1
+		else:
+			d[word] = 1
+	
+	locations = {}
+	# Loop through each follower and add a location if it does not exist.
+	# Otherwise add the user to the list on an existing location. This way
+	# we're grouping followers from the same locations.
+	for follower in followers:
+		# Clean it up
+		location = follower['location']
+		# Clean up the follower data, we don't want to store too much
+		follower = {'screen_name': follower['screen_name'], 'profile_image_url': follower['profile_image_url']}
+		if not location: continue
+		
+		location = location.replace('\n', ' ').strip()
+		if location in locations:
+			locations[location]['users'].append(follower)
+		else:
+			locations[location] = {'name': location, 'lat': 0, 'lon': 0, 'users': [follower]}
+
+	# Loop through all the locations and query the Datastore for their
+	# Geo points (latitude and longitude) which could be pointed out
+	# on the map.
+	new_locations = []
+	for location in locations.keys():
+		if not location:
+			del locations[location]
+			continue
+		
+		query = Geo.all()
+		query.filter('location =', location)
+		g = query.get()
+		
+		# We don't want empty locations, neither do we want locations
+		# recorded as None, which are temporary stored until the cron
+		# jobs resolves them into valid geo points.
+		if g:
+			if g.geo != 'None':
+				if g.geo != '0,0':
+					# If a location exists, we set its lat and lon values.
+					locations[location]['lat'], locations[location]['lon'] = g.geo.split(',')
+				else:
+					# If the location's geo address is 0,0 we remove it from the locations list
+					# since we don't want to show irrelevant locations.
+					del locations[location]
+			else:
+				del locations[location]
+		
+		# If the query returned no results, we verify if the location is valid
+		# and add it to the Datastore with a value of None, for later processing
+		# by the cron jobs. We delete the location from the locations dict anyways
+		# since we don't have any lat,lon points to show off.
+		else:
+			if location:
+				new_locations.append(location)
+			del locations[location]
+			
+	# Let's add tasks for new locations
+	if new_locations:
+		deferred.defer(tasks.create_geo, new_locations, _countdown=1, _queue='geocreate')
+		
+	# Let's submit this as a recent query into the datastore (via a task)
+	deferred.defer(tasks.create_recent, {'screen_name': profile['screen_name'], 'profile_image_url': profile['profile_image_url']}, _countdown=1, _queue='recent')
+	
+	# Make this a list so that we could pass it on to the template afterwards
+	locations = list(locations.values())
+	
+	# Save the cache
+	cache_data = {'profile': profile, 'topics_data': topics, 'mentions_data': mentions, 'hashtags_data': hashtags, 'locations': locations}
+	save_profile_cache(screen_name, cache_data)
+	return
 
 # Accessible URLs, others in app.yaml
 
