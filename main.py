@@ -256,8 +256,12 @@ class Profile(webapp.RequestHandler):
 				render(self, 'request.html', {'screen_name': screen_name})
 				return
 			else:
-				collect_data(screen_name)
-				cached, outdated = self.get_cached_profile(screen_name)
+				pass
+				#context['screen_name'] = screen_name
+				#render(self, 'profile.html', context)
+				#return
+				#collect_data(screen_name)
+				#cached, outdated = self.get_cached_profile(screen_name)
 			
 			# Cached values are json encoded, decode and get rid of the cached object
 			cached_values = decoder.decode(cached.value)
@@ -275,7 +279,7 @@ class Profile(webapp.RequestHandler):
 			# Parse the created date, since we wanna pass a datetime object to the template.
 			context['profile']['created_at'] = datetime.strptime(context['profile']['created_at'], "%a %b %d %H:%M:%S +0000 %Y")
 			context['topics_cloud_html'] = get_cloud_html(context['topics_data'])
-			context['mentions_cloud_html'] = get_cloud_html(context['mentions_data'], url='/%s', xfn='friend')
+			context['mentions_cloud_html'] = get_cloud_html(context['mentions_data'], url='/%s', rel='friend nofollow')
 			context['hashtags_cloud_html'] = get_cloud_html(context['hashtags_data'])
 			
 			del context['topics_data']
@@ -409,7 +413,7 @@ def getTwitterObject():
 # Render a cloud based on a words dictionary. There seems to be some
 # magic going on here, have to revise and probably rewrite for easier
 # to understand and more elegant output.
-def get_cloud_html(words, url="http://search.twitter.com/search?q=%s", min_font_size=12, max_font_size=30, xfn=""):
+def get_cloud_html(words, url="http://search.twitter.com/search?q=%s", min_font_size=12, max_font_size=30, rel=""):
 	try:
 		maximum = max(words.values())
 		minimum = min(words.values())
@@ -437,8 +441,8 @@ def get_cloud_html(words, url="http://search.twitter.com/search?q=%s", min_font_
 		if c > (min_output - 2):
 			size = min_font_size + ((c - minimum) * step)
 			word_url = word.replace('@', '').replace('#', '')
-			rel = "%s external nofollow" % xfn if url.startswith('http://') else '%s' % xfn
-			result.append('<a rel="%(rel)s" style="font-size: %(size)spx" class="tag_cloud" href="%(url)s" title="\'%(word)s\' has been used %(count)s times">%(word)s</a>' % {'size': int(size), 'word': word, 'url': url % word_url, 'count': c, 'rel': rel})
+			link_rel = "%s external nofollow" % rel if url.startswith('http://') else '%s' % rel
+			result.append('<a rel="%(rel)s" style="font-size: %(size)spx" class="tag_cloud" href="%(url)s" title="\'%(word)s\' has been used %(count)s times">%(word)s</a>' % {'size': int(size), 'word': word, 'url': url % word_url, 'count': c, 'rel': link_rel})
 			
 	return ' '.join(result)
 
